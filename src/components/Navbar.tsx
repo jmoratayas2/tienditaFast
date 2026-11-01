@@ -13,10 +13,11 @@ import {
   TeamOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
+  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 import { dataService } from '@/lib/dataService';
-import { StaffUser } from '@/lib/types';
+import { StaffUser, UserRole } from '@/lib/types';
 
 interface NavbarProps {
   cartCount?: number;
@@ -27,7 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
   const pathname = usePathname();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<'admin' | 'despachador'>('despachador');
+  const [userRole, setUserRole] = useState<UserRole>('despachador');
   const isConnected = isSupabaseConfigured();
 
   const loadUserProfile = async (userEmail: string) => {
@@ -97,13 +98,14 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
   };
 
   const isAdmin = userRole === 'admin';
+  const isStorefront = !pathname?.startsWith('/admin');
 
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'user-email',
       label: (
         <div style={{ padding: '4px 0' }}>
-          <div style={{ fontWeight: 600 }}>{currentUser?.email || currentUser?.name || 'Personal'}</div>
+          <div style={{ fontWeight: 600 }}>{currentUser?.name || currentUser?.email || 'Personal'}</div>
           <div style={{ marginTop: 2 }}>
             <Tag color={isAdmin ? 'gold' : 'cyan'}>
               {isAdmin ? '🛡️ Administrador' : '📦 Despachador'}
@@ -119,27 +121,26 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
       icon: <DashboardOutlined />,
       label: <Link href="/admin">Panel de Despacho</Link>,
     },
+    {
+      key: 'inventario',
+      icon: <AppstoreOutlined />,
+      label: <Link href="/admin/inventario">Inventario & Stock</Link>,
+    },
     ...(isAdmin
       ? [
           {
-            key: 'inventario',
-            icon: <AppstoreOutlined />,
-            label: <Link href="/admin/inventario">Inventario & Precios</Link>,
-          },
-          {
             key: 'usuarios',
             icon: <TeamOutlined />,
-            label: <Link href="/admin/usuarios">Gestión de Personal</Link>,
+            label: <Link href="/admin/usuarios">Personal & Roles</Link>,
           },
         ]
-      : [
-          {
-            key: 'inventario',
-            icon: <AppstoreOutlined />,
-            label: <Link href="/admin/inventario">Consultar Stock</Link>,
-          },
-        ]),
+      : []),
     { type: 'divider' },
+    {
+      key: 'store',
+      icon: <ShopOutlined />,
+      label: <Link href="/">Ver Tienda de Clientes</Link>,
+    },
     {
       key: 'logout',
       danger: true,
@@ -149,19 +150,22 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
     },
   ];
 
-  const isStorefront = !pathname?.startsWith('/admin');
-
   return (
     <header className="site-navbar">
       <div className="navbar-inner">
-        <Link href="/" className="brand-link">
+        {/* Lado Izquierdo: Branding diferenciado */}
+        <Link href={isStorefront ? '/' : '/admin'} className="brand-link">
           <ShopOutlined style={{ fontSize: 26 }} />
           <span>La Tiendita</span>
-          <span className="brand-badge">Pedidos Rápidos</span>
+          <span className="brand-badge">
+            {isStorefront ? 'Pedidos Rápidos' : 'Portal de Gestión'}
+          </span>
         </Link>
 
+        {/* Lado Derecho: Controles según el contexto */}
         <Space direction="horizontal" size="middle">
           {isStorefront ? (
+            // ================= VISTA CLIENTES =================
             <>
               <Link href="/">
                 <Button type={pathname === '/' ? 'primary' : 'text'}>
@@ -182,20 +186,15 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
                 </Badge>
               )}
 
-              <Link href="/admin">
-                <Button icon={<DashboardOutlined />}>
-                  Área de Despacho
+              <Link href="/admin/login">
+                <Button type="text" icon={<SafetyCertificateOutlined />} style={{ color: '#64748b' }}>
+                  Acceso Personal
                 </Button>
               </Link>
             </>
           ) : (
+            // ================= VISTA ADMINISTRATIVA =================
             <>
-              <Link href="/">
-                <Button icon={<ShopOutlined />}>
-                  Ir a Tienda
-                </Button>
-              </Link>
-
               <Link href="/admin">
                 <Button type={pathname === '/admin' ? 'primary' : 'default'} icon={<DashboardOutlined />}>
                   Pedidos Activos
@@ -211,30 +210,30 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
               {isAdmin && (
                 <Link href="/admin/usuarios">
                   <Button type={pathname === '/admin/usuarios' ? 'primary' : 'default'} icon={<TeamOutlined />}>
-                    Usuarios
+                    Personal
                   </Button>
                 </Link>
               )}
-            </>
-          )}
 
-          {currentUser ? (
-            <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
-              <Button icon={<UserOutlined />} style={{ borderColor: isAdmin ? '#eab308' : '#0d9488' }}>
-                <span style={{ fontWeight: 600 }}>
-                  {currentUser?.email ? currentUser.email.split('@')[0] : currentUser.name || 'Mi Cuenta'}
-                </span>
-                <Tag color={isAdmin ? 'gold' : 'cyan'} style={{ marginLeft: 6, fontSize: 11 }}>
-                  {isAdmin ? 'Admin' : 'Despachador'}
-                </Tag>
-              </Button>
-            </Dropdown>
-          ) : (
-            <Link href="/admin/login">
-              <Button type="dashed" icon={<SafetyCertificateOutlined />}>
-                Ingreso Personal
-              </Button>
-            </Link>
+              <Link href="/">
+                <Button type="dashed" icon={<ShopOutlined />}>
+                  Tienda Clientes
+                </Button>
+              </Link>
+
+              {currentUser && (
+                <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
+                  <Button icon={<UserOutlined />} style={{ borderColor: isAdmin ? '#eab308' : '#0d9488' }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {currentUser?.name || currentUser?.email?.split('@')[0] || 'Mi Cuenta'}
+                    </span>
+                    <Tag color={isAdmin ? 'gold' : 'cyan'} style={{ marginLeft: 6, fontSize: 11 }}>
+                      {isAdmin ? 'Admin' : 'Despachador'}
+                    </Tag>
+                  </Button>
+                </Dropdown>
+              )}
+            </>
           )}
         </Space>
       </div>

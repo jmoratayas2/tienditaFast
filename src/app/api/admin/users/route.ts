@@ -39,29 +39,47 @@ export async function POST(request: Request) {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-
     let authUserId: string | null = null;
 
-    // Si viene con contraseña y service_role, crear en auth.users
-    if (password && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name,
-          role: role || 'despachador',
-        },
-      });
+    // Crear cuenta de autenticación con contraseña
+    if (password) {
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
+          email: email.trim().toLowerCase(),
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: full_name.trim(),
+            role: role || 'despachador',
+          },
+        });
 
-      if (authErr) {
-        console.error('Error creando en auth.admin:', authErr);
-      } else if (authData?.user) {
-        authUserId = authData.user.id;
+        if (!authErr && authData?.user) {
+          authUserId = authData.user.id;
+        } else if (authErr) {
+          console.warn('Advertencia en auth.admin.createUser:', authErr.message);
+        }
+      } else {
+        const { data: signData, error: signErr } = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password,
+          options: {
+            data: {
+              full_name: full_name.trim(),
+              role: role || 'despachador',
+            },
+          },
+        });
+
+        if (!signErr && signData?.user) {
+          authUserId = signData.user.id;
+        } else if (signErr) {
+          console.warn('Advertencia en auth.signUp:', signErr.message);
+        }
       }
     }
 
-    // Insertar en tabla staff_users
+    // Insertar o actualizar en tabla staff_users
     const { data, error } = await supabase
       .from('staff_users')
       .upsert(
@@ -118,4 +136,3 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: err.message || 'Error interno' }, { status: 500 });
   }
 }
-

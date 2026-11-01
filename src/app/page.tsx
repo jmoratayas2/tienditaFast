@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Typography,
   Input,
   Radio,
   Space,
-  Alert,
   Spin,
   Empty,
   Badge,
@@ -18,7 +18,7 @@ import {
   SearchOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
-  InfoCircleOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { ProductCard } from '@/components/ProductCard';
@@ -35,7 +35,6 @@ export default function StorefrontPage() {
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const isSupabase = dataService.isUsingSupabase();
 
   const loadProducts = async () => {
     try {
@@ -51,7 +50,6 @@ export default function StorefrontPage() {
   useEffect(() => {
     loadProducts();
 
-    // Escuchar actualizaciones de stock en local o eventos
     const handleStorage = () => {
       loadProducts();
     };
@@ -65,7 +63,6 @@ export default function StorefrontPage() {
     };
   }, []);
 
-  // Manejo del carrito
   const handleAddToCart = (product: Product, quantity: number) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
@@ -99,10 +96,8 @@ export default function StorefrontPage() {
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Categorías únicas
   const categories = ['Todas', ...Array.from(new Set(products.map((p) => p.category)))];
 
-  // Filtrado
   const filteredProducts = products.filter((p) => {
     const matchesCategory =
       selectedCategory === 'Todas' || p.category === selectedCategory;
@@ -113,11 +108,11 @@ export default function StorefrontPage() {
   });
 
   return (
-    <div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Navbar cartCount={totalCartItems} onOpenCart={() => setCartOpen(true)} />
 
-      <main className="main-container">
-        {/* Banner de Bienvenida y Políticas del Pedido */}
+      <main className="main-container" style={{ flex: 1 }}>
+        {/* Banner de Bienvenida y Políticas del Pedido Rápido */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0d9488 0%, #047857 100%)',
@@ -131,19 +126,19 @@ export default function StorefrontPage() {
           <Row gutter={[24, 24]} align="middle">
             <Col xs={24} md={16}>
               <Title level={2} style={{ color: '#ffffff', margin: 0, fontWeight: 800 }}>
-                ¡Haz tu pedido en línea y retira en el mostrador!
+                Pedidos Rápidos para Retiro en Mostrador
               </Title>
               <Paragraph style={{ color: '#ccfbf1', fontSize: 16, marginTop: 8, marginBottom: 16 }}>
-                Selecciona tus productos. No necesitas registrarte. Al confirmar, tu pedido queda reservado con un tiempo límite de <strong>10 minutos</strong> para retirarlo en tienda.
+                Elige tus productos y confirma tu pedido <strong>sin necesidad de crear una cuenta</strong>. Tus artículos quedan apartados al instante con un límite de <strong>10 minutos</strong> para retirar y pagar en caja.
               </Paragraph>
               <Space wrap size="middle">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
                   <ThunderboltOutlined style={{ color: '#fef08a' }} />
-                  <span>Descuento de stock en tiempo real</span>
+                  <span>Reserva automática de existencias</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
                   <ClockCircleOutlined style={{ color: '#fef08a' }} />
-                  <span>Temporizador activo de 10 min</span>
+                  <span>10 minutos para recoger tu pedido</span>
                 </div>
               </Space>
             </Col>
@@ -158,30 +153,18 @@ export default function StorefrontPage() {
                 }}
               >
                 <div style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: 1, color: '#e2e8f0' }}>
-                  Retiro Inmediato
+                  Tiempo de Retiro
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4 }}>
-                  10 Minutos Máximo
+                  10 Minutos
                 </div>
                 <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 4 }}>
-                  Si no se retira, el pedido se anula y el producto vuelve a estar disponible para otros.
+                  Si el pedido no es retirado dentro del plazo, se anulará automáticamente para liberar el inventario.
                 </div>
               </Card>
             </Col>
           </Row>
         </div>
-
-        {/* Notificación si está en modo local vs Supabase */}
-        {!isSupabase && (
-          <Alert
-            message="Modo Demostración Interactivo Activo"
-            description="La tienda está funcionando con base de datos local y temporizador persistente. Para sincronizar en la nube con Supabase, configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local."
-            type="info"
-            showIcon
-            closable
-            style={{ marginBottom: 20, borderRadius: 10 }}
-          />
-        )}
 
         {/* Filtros de Búsqueda y Categorías */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -212,12 +195,12 @@ export default function StorefrontPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <Spin size="large" />
-            <div style={{ marginTop: 12, color: '#64748b' }}>Cargando catálogo de productos...</div>
+            <div style={{ marginTop: 12, color: '#64748b' }}>Cargando catálogo disponible...</div>
           </div>
         ) : filteredProducts.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No se encontraron productos que coincidan con la búsqueda."
+            description="No se encontraron productos disponibles en esta categoría."
             style={{ margin: '60px 0' }}
           />
         ) : (
@@ -237,6 +220,19 @@ export default function StorefrontPage() {
         )}
       </main>
 
+      {/* Footer para Clientes con enlace discreto a personal */}
+      <footer style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0', padding: '24px 16px', marginTop: 40 }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ fontSize: 13, color: '#64748b' }}>
+            © {new Date().getFullYear()} <strong>La Tiendita</strong>. Plataforma de Pedidos Rápidos en Mostrador.
+          </div>
+          <Link href="/admin/login" style={{ fontSize: 13, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <SafetyCertificateOutlined />
+            <span>Acceso Personal Administrativo</span>
+          </Link>
+        </div>
+      </footer>
+
       {/* Carrito de Compras Lateral */}
       <CartDrawer
         visible={cartOpen}
@@ -249,4 +245,3 @@ export default function StorefrontPage() {
     </div>
   );
 }
-

@@ -34,7 +34,7 @@ const INITIAL_STAFF_USERS: StaffUser[] = [
   },
 ];
 
-// Helper de LocalStorage para modo offline/demo
+// Helper de LocalStorage para almacenamiento local persistente
 const getLocalProducts = (): Product[] => {
   if (typeof window === 'undefined') return INITIAL_PRODUCTS;
   const stored = localStorage.getItem(MOCK_PRODUCTS_KEY);
