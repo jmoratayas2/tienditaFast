@@ -10,10 +10,13 @@ import {
   DashboardOutlined,
   AppstoreOutlined,
   UserOutlined,
+  TeamOutlined,
   LogoutOutlined,
-  CheckCircleOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
+import { dataService } from '@/lib/dataService';
+import { StaffUser } from '@/lib/types';
 
 interface NavbarProps {
   cartCount?: number;
@@ -24,31 +27,58 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
   const pathname = usePathname();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'despachador'>('despachador');
   const isConnected = isSupabaseConfigured();
 
+  const loadUserProfile = async (userEmail: string) => {
+    try {
+      const staffList = await dataService.getStaffUsers();
+      const profile = staffList.find(
+        (s) => s.email.toLowerCase() === userEmail.toLowerCase()
+      );
+      if (profile) {
+        setUserRole(profile.role);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    if (userEmail.toLowerCase().includes('admin')) {
+      setUserRole('admin');
+    } else {
+      setUserRole('despachador');
+    }
+  };
+
   useEffect(() => {
-    // Verificar si hay sesión de Supabase
     if (isConnected) {
       const supabase = createClientBrowser();
       supabase.auth.getUser().then(({ data }) => {
         if (data?.user) {
           setCurrentUser(data.user);
+          loadUserProfile(data.user.email || '');
         }
       });
 
       const { data: authListener } = supabase.auth.onAuthStateChange((_, session) => {
-        setCurrentUser(session?.user || null);
+        if (session?.user) {
+          setCurrentUser(session.user);
+          loadUserProfile(session.user.email || '');
+        } else {
+          setCurrentUser(null);
+        }
       });
 
       return () => {
         authListener.subscription.unsubscribe();
       };
     } else {
-      // Modo demo: chequear si hay un usuario de despacho local
       const localUser = localStorage.getItem('tiendita_current_staff');
       if (localUser) {
         try {
-          setCurrentUser(JSON.parse(localUser));
+          const parsed = JSON.parse(localUser);
+          setCurrentUser(parsed);
+          setUserRole(parsed.role || (parsed.email?.includes('admin') ? 'admin' : 'despachador'));
         } catch {
           setCurrentUser(null);
         }
@@ -66,13 +96,19 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
     router.push('/admin/login');
   };
 
+  const isAdmin = userRole === 'admin';
+
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'user-email',
       label: (
         <div style={{ padding: '4px 0' }}>
           <div style={{ fontWeight: 600 }}>{currentUser?.email || currentUser?.name || 'Personal'}</div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>Despachador Autorizado</div>
+          <div style={{ marginTop: 2 }}>
+            <Tag color={isAdmin ? 'gold' : 'cyan'}>
+              {isAdmin ? '🛡️ Administrador' : '📦 Despachador'}
+            </Tag>
+          </div>
         </div>
       ),
       disabled: true,
@@ -83,11 +119,26 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
       icon: <DashboardOutlined />,
       label: <Link href="/admin">Panel de Despacho</Link>,
     },
-    {
-      key: 'inventario',
-      icon: <AppstoreOutlined />,
-      label: <Link href="/admin/inventario">Inventario & Stock</Link>,
-    },
+    ...(isAdmin
+      ? [
+          {
+            key: 'inventario',
+            icon: <AppstoreOutlined />,
+            label: <Link href="/admin/inventario">Inventario & Precios</Link>,
+          },
+          {
+            key: 'usuarios',
+            icon: <TeamOutlined />,
+            label: <Link href="/admin/usuarios">Gestión de Personal</Link>,
+          },
+        ]
+      : [
+          {
+            key: 'inventario',
+            icon: <AppstoreOutlined />,
+            label: <Link href="/admin/inventario">Consultar Stock</Link>,
+          },
+        ]),
     { type: 'divider' },
     {
       key: 'logout',
@@ -156,18 +207,31 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
                   Inventario
                 </Button>
               </Link>
+
+              {isAdmin && (
+                <Link href="/admin/usuarios">
+                  <Button type={pathname === '/admin/usuarios' ? 'primary' : 'default'} icon={<TeamOutlined />}>
+                    Usuarios
+                  </Button>
+                </Link>
+              )}
             </>
           )}
 
           {currentUser ? (
             <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
-              <Button icon={<UserOutlined />} style={{ borderColor: '#0d9488', color: '#0d9488' }}>
-                {currentUser?.email ? currentUser.email.split('@')[0] : currentUser.name || 'Mi Cuenta'}
+              <Button icon={<UserOutlined />} style={{ borderColor: isAdmin ? '#eab308' : '#0d9488' }}>
+                <span style={{ fontWeight: 600 }}>
+                  {currentUser?.email ? currentUser.email.split('@')[0] : currentUser.name || 'Mi Cuenta'}
+                </span>
+                <Tag color={isAdmin ? 'gold' : 'cyan'} style={{ marginLeft: 6, fontSize: 11 }}>
+                  {isAdmin ? 'Admin' : 'Despachador'}
+                </Tag>
               </Button>
             </Dropdown>
           ) : (
             <Link href="/admin/login">
-              <Button type="dashed" icon={<UserOutlined />}>
+              <Button type="dashed" icon={<SafetyCertificateOutlined />}>
                 Ingreso Personal
               </Button>
             </Link>
@@ -177,4 +241,3 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
     </header>
   );
 };
-

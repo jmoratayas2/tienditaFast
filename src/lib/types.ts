@@ -2,6 +2,18 @@ export type OrderStatus = 'pending' | 'dispatched' | 'cancelled' | 'expired';
 
 export type PaymentMethodType = 'efectivo' | 'tarjeta' | 'transferencia' | 'sinpe' | 'otro';
 
+export type UserRole = 'admin' | 'despachador';
+
+export interface StaffUser {
+  id: string;
+  auth_user_id?: string | null;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at?: string;
+}
+
 export interface PaymentItem {
   id: string;
   method: PaymentMethodType;
@@ -59,4 +71,3 @@ export interface CartItem {
   product: Product;
   quantity: number;
 }
-

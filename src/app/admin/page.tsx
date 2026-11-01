@@ -17,9 +17,12 @@ import {
   Popconfirm,
   Badge,
   Input,
+  InputNumber,
   Modal,
   Alert,
   Tooltip,
+  Select,
+  Divider,
   message,
 } from 'antd';
 import {
@@ -31,11 +34,14 @@ import {
   ReloadOutlined,
   EyeOutlined,
   UserOutlined,
+  TeamOutlined,
+  PlusCircleOutlined,
+  ShoppingCartOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { DispatchModal } from '@/components/DispatchModal';
-import { Order } from '@/lib/types';
+import { Order, Product, UserRole } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import { formatCurrency, formatDateTime, calculateRemainingSeconds, formatCountdown } from '@/lib/formatters';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
@@ -45,50 +51,89 @@ const { Title, Text, Paragraph } = Typography;
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pending');
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<Order | null>(null);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<UserRole>('despachador');
   const [cancelModalOrder, setCancelModalOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('Cancelado por el mostrador');
+
+  // Estado para el modal de "Tomar Pedido Mostrador"
+  const [takeOrderModalOpen, setTakeOrderModalOpen] = useState(false);
+  const [orderCustomerName, setOrderCustomerName] = useState('Cliente Mostrador');
+  const [orderCustomerPhone, setOrderCustomerPhone] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
+  const [selectedItems, setSelectedItems] = useState<{ productId: string; quantity: number }[]>([]);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+
   const isSupabase = isSupabaseConfigured();
 
-  // Cargar usuario autenticado
+  // Cargar usuario autenticado y su rol
   useEffect(() => {
-    if (isSupabase) {
-      const supabase = createClientBrowser();
-      supabase.auth.getUser().then(({ data }) => {
+    const initUser = async () => {
+      let email = '';
+      if (isSupabase) {
+        const supabase = createClientBrowser();
+        const { data } = await supabase.auth.getUser();
         if (!data?.user) {
-          // Si no hay usuario, redirigir al login
           router.push('/admin/login');
+          return;
         } else {
           setCurrentUser({
             id: data.user.id,
             name: data.user.email?.split('@')[0] || 'Despachador',
             email: data.user.email,
           });
-        }
-      });
-    } else {
-      const localStaff = localStorage.getItem('tiendita_current_staff');
-      if (localStaff) {
-        try {
-          setCurrentUser(JSON.parse(localStaff));
-        } catch {
-          router.push('/admin/login');
+          email = data.user.email || '';
         }
       } else {
-        router.push('/admin/login');
+        const localStaff = localStorage.getItem('tiendita_current_staff');
+        if (localStaff) {
+          try {
+            const parsed = JSON.parse(localStaff);
+            setCurrentUser(parsed);
+            email = parsed.email || '';
+          } catch {
+            router.push('/admin/login');
+            return;
+          }
+        } else {
+          router.push('/admin/login');
+          return;
+        }
       }
-    }
+
+      // Validar rol desde la lista de personal
+      try {
+        const staffList = await dataService.getStaffUsers();
+        const profile = staffList.find((s) => s.email.toLowerCase() === email.toLowerCase());
+        if (profile) {
+          setUserRole(profile.role);
+        } else if (email.toLowerCase().includes('admin')) {
+          setUserRole('admin');
+        } else {
+          setUserRole('despachador');
+        }
+      } catch {
+        setUserRole('despachador');
+      }
+    };
+
+    initUser();
   }, [isSupabase, router]);
 
-  // Cargar pedidos y actualizar expirados
-  const fetchOrders = async () => {
+  // Cargar pedidos y productos
+  const fetchOrdersAndProducts = async () => {
     try {
-      const all = await dataService.getOrders('all');
-      setOrders(all);
+      const [allOrders, allProds] = await Promise.all([
+        dataService.getOrders('all'),
+        dataService.getProducts(),
+      ]);
+      setOrders(allOrders);
+      setProducts(allProds);
     } catch (err) {
       console.error('Error cargando pedidos:', err);
     } finally {
@@ -97,14 +142,13 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
-    fetchOrders();
+    fetchOrdersAndProducts();
 
-    // Intervalo de refresco cada 5 segundos para actualizar el temporizador de los pedidos pendientes
     const interval = setInterval(() => {
-      fetchOrders();
+      fetchOrdersAndProducts();
     }, 5000);
 
-    const handleStorage = () => fetchOrders();
+    const handleStorage = () => fetchOrdersAndProducts();
     window.addEventListener('tiendita_storage_updated', handleStorage);
 
     return () => {
@@ -124,11 +168,102 @@ export default function AdminDashboardPage() {
       await dataService.cancelOrder(cancelModalOrder.id, cancelReason);
       message.success(`Pedido #${cancelModalOrder.order_number} anulado. El stock fue restablecido.`);
       setCancelModalOrder(null);
-      fetchOrders();
+      fetchOrdersAndProducts();
     } catch (err: any) {
       message.error(err.message || 'Error al anular pedido');
     }
   };
+
+  // Lógica para Tomar Pedido Mostrador
+  const handleAddItemToCounterOrder = (prodId: string) => {
+    const existing = selectedItems.find((i) => i.productId === prodId);
+    const prod = products.find((p) => p.id === prodId);
+    if (!prod) return;
+
+    if (existing) {
+      if (existing.quantity >= prod.stock) {
+        message.warning(`No hay más stock disponible para ${prod.name}`);
+        return;
+      }
+      setSelectedItems(
+        selectedItems.map((i) =>
+          i.productId === prodId ? { ...i, quantity: i.quantity + 1 } : i
+        )
+      );
+    } else {
+      if (prod.stock <= 0) {
+        message.warning(`El producto ${prod.name} está agotado`);
+        return;
+      }
+      setSelectedItems([...selectedItems, { productId: prodId, quantity: 1 }]);
+    }
+  };
+
+  const handleUpdateCounterItemQty = (prodId: string, qty: number) => {
+    if (qty <= 0) {
+      setSelectedItems(selectedItems.filter((i) => i.productId !== prodId));
+      return;
+    }
+    const prod = products.find((p) => p.id === prodId);
+    if (prod && qty > prod.stock) {
+      message.warning(`Stock máximo disponible: ${prod.stock}`);
+      qty = prod.stock;
+    }
+    setSelectedItems(
+      selectedItems.map((i) =>
+        i.productId === prodId ? { ...i, quantity: qty } : i
+      )
+    );
+  };
+
+  const handleCreateCounterOrder = async (dispatchImmediately: boolean = false) => {
+    if (selectedItems.length === 0) {
+      message.warning('Debes agregar al menos un producto al pedido.');
+      return;
+    }
+
+    try {
+      setSubmittingOrder(true);
+      const itemsPayload = selectedItems.map((item) => {
+        const prod = products.find((p) => p.id === item.productId)!;
+        return { product: prod, quantity: item.quantity };
+      });
+
+      const res = await dataService.createOrder(
+        orderCustomerName.trim() || 'Cliente Mostrador',
+        orderCustomerPhone.trim(),
+        orderNotes.trim() ? `[Mostrador] ${orderNotes.trim()}` : '[Mostrador]',
+        itemsPayload
+      );
+
+      message.success(`¡Pedido #${res.order_number} generado con éxito!`);
+      setTakeOrderModalOpen(false);
+      setSelectedItems([]);
+      setOrderCustomerName('Cliente Mostrador');
+      setOrderCustomerPhone('');
+      setOrderNotes('');
+
+      await fetchOrdersAndProducts();
+
+      if (dispatchImmediately) {
+        // Cargar pedido recién creado y abrir modal de cobro
+        const created = await dataService.getOrder(res.order_id);
+        if (created) {
+          setSelectedOrderForDispatch(created);
+          setDispatchModalOpen(true);
+        }
+      }
+    } catch (err: any) {
+      message.error(err.message || 'Error al crear el pedido.');
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
+  const counterOrderTotal = selectedItems.reduce((sum, item) => {
+    const prod = products.find((p) => p.id === item.productId);
+    return sum + (prod ? prod.price * item.quantity : 0);
+  }, 0);
 
   // Pedidos divididos por estado
   const pendingOrders = orders.filter((o) => o.status === 'pending');
@@ -137,6 +272,7 @@ export default function AdminDashboardPage() {
 
   // Estadísticas
   const totalRevenue = dispatchedOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const isAdmin = userRole === 'admin';
 
   // Columnas para Pedidos Pendientes
   const pendingColumns = [
@@ -349,23 +485,46 @@ export default function AdminDashboardPage() {
         {/* Cabecera del Panel */}
         <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>
-              Panel de Despacho & Caja
-            </Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Title level={2} style={{ margin: 0 }}>
+                Panel de Despacho & Caja
+              </Title>
+              <Tag color={isAdmin ? 'gold' : 'cyan'} style={{ fontSize: 13, padding: '2px 10px' }}>
+                {isAdmin ? '🛡️ Administrador' : '📦 Despachador'}
+              </Tag>
+            </div>
             <Text type="secondary">
               Atendiendo como: <strong>{currentUser?.name || currentUser?.email || 'Despachador'}</strong>
             </Text>
           </div>
 
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={fetchOrders} loading={loading}>
-              Refrescar Pedidos
+          <Space wrap>
+            <Button
+              type="primary"
+              style={{ background: '#0d9488' }}
+              icon={<ShoppingCartOutlined />}
+              onClick={() => setTakeOrderModalOpen(true)}
+            >
+              + Tomar Pedido Mostrador
             </Button>
+
+            <Button icon={<ReloadOutlined />} onClick={fetchOrdersAndProducts} loading={loading}>
+              Refrescar
+            </Button>
+
             <Link href="/admin/inventario">
               <Button type="default">
-                Gestionar Inventario
+                Inventario
               </Button>
             </Link>
+
+            {isAdmin && (
+              <Link href="/admin/usuarios">
+                <Button type="default" icon={<TeamOutlined />}>
+                  Personal & Roles
+                </Button>
+              </Link>
+            )}
           </Space>
         </div>
 
@@ -467,13 +626,150 @@ export default function AdminDashboardPage() {
         </Card>
       </main>
 
+      {/* Modal para Tomar Pedido Presencial en Mostrador */}
+      <Modal
+        open={takeOrderModalOpen}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ShoppingCartOutlined style={{ color: '#0d9488' }} />
+            <span>Tomar Pedido Mostrador (Despacho Rápido)</span>
+          </div>
+        }
+        onCancel={() => setTakeOrderModalOpen(false)}
+        width={700}
+        footer={[
+          <Button key="cancel" onClick={() => setTakeOrderModalOpen(false)}>
+            Cancelar
+          </Button>,
+          <Button
+            key="submit-queue"
+            loading={submittingOrder}
+            onClick={() => handleCreateCounterOrder(false)}
+          >
+            Guardar Pedido Pendiente
+          </Button>,
+          <Button
+            key="submit-charge"
+            type="primary"
+            style={{ background: '#0d9488' }}
+            loading={submittingOrder}
+            onClick={() => handleCreateCounterOrder(true)}
+          >
+            Cobrar & Despachar Ya
+          </Button>,
+        ]}
+      >
+        <div style={{ marginTop: 12 }}>
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Text strong style={{ fontSize: 13 }}>Nombre del Cliente:</Text>
+              <Input
+                value={orderCustomerName}
+                onChange={(e) => setOrderCustomerName(e.target.value)}
+                placeholder="Cliente Mostrador"
+                style={{ marginTop: 4, marginBottom: 12 }}
+              />
+            </Col>
+            <Col xs={24} sm={12}>
+              <Text strong style={{ fontSize: 13 }}>Teléfono (Opcional):</Text>
+              <Input
+                value={orderCustomerPhone}
+                onChange={(e) => setOrderCustomerPhone(e.target.value)}
+                placeholder="Ej: 8888-8888"
+                style={{ marginTop: 4, marginBottom: 12 }}
+              />
+            </Col>
+          </Row>
+
+          <Divider orientation="left" style={{ margin: '8px 0 12px 0', fontSize: 13 }}>
+            Seleccionar Productos
+          </Divider>
+
+          {/* Selector de productos */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 150, overflowY: 'auto', padding: 4, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+            {products.map((p) => (
+              <Button
+                key={p.id}
+                size="small"
+                disabled={p.stock <= 0}
+                onClick={() => handleAddItemToCounterOrder(p.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span>{p.name}</span>
+                <Tag color={p.stock > 0 ? 'cyan' : 'default'} style={{ margin: 0, fontSize: 11 }}>
+                  {p.stock > 0 ? `${p.stock} disp.` : 'Agotado'}
+                </Tag>
+                <strong>{formatCurrency(p.price)}</strong>
+              </Button>
+            ))}
+          </div>
+
+          {/* Items seleccionados en el pedido */}
+          <div style={{ marginTop: 16 }}>
+            <Text strong>Productos en este Pedido:</Text>
+            {selectedItems.length === 0 ? (
+              <div style={{ padding: 16, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                Haz clic en los productos de arriba para agregarlos.
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
+                {selectedItems.map((item) => {
+                  const prod = products.find((p) => p.id === item.productId);
+                  if (!prod) return null;
+                  return (
+                    <div
+                      key={item.productId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '6px 0',
+                        borderBottom: '1px solid #f8fafc',
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{prod.name}</span>
+                      <Space>
+                        <InputNumber
+                          min={1}
+                          max={prod.stock}
+                          value={item.quantity}
+                          onChange={(val) => handleUpdateCounterItemQty(item.productId, val || 0)}
+                          size="small"
+                          style={{ width: 64 }}
+                        />
+                        <span style={{ minWidth: 80, textAlign: 'right', fontWeight: 700 }}>
+                          {formatCurrency(prod.price * item.quantity)}
+                        </span>
+                        <Button
+                          size="small"
+                          danger
+                          type="text"
+                          onClick={() => handleUpdateCounterItemQty(item.productId, 0)}
+                        >
+                          ✕
+                        </Button>
+                      </Space>
+                    </div>
+                  );
+                })}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 8, borderTop: '2px dashed #e2e8f0', fontWeight: 800, fontSize: 16 }}>
+                  <span>Total a Pagar:</span>
+                  <span style={{ color: '#0d9488' }}>{formatCurrency(counterOrderTotal)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
       {/* Modal de Despacho y Registro de Pago */}
       <DispatchModal
         visible={dispatchModalOpen}
         order={selectedOrderForDispatch}
         currentUser={currentUser}
         onClose={() => setDispatchModalOpen(false)}
-        onSuccess={fetchOrders}
+        onSuccess={fetchOrdersAndProducts}
       />
 
       {/* Modal para Anular Pedido */}
@@ -507,4 +803,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-

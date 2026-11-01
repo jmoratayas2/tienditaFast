@@ -15,6 +15,8 @@ import {
   Input,
   Select,
   Image,
+  Alert,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -23,11 +25,13 @@ import {
   DashboardOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
-import { Product } from '@/lib/types';
+import { Product, UserRole } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import { formatCurrency } from '@/lib/formatters';
+import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 
 const { Title, Text } = Typography;
 
@@ -37,6 +41,46 @@ export default function AdminInventoryPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>('despachador');
+  const isConnected = isSupabaseConfigured();
+
+  // Cargar rol de usuario
+  useEffect(() => {
+    const checkRole = async () => {
+      let email = '';
+      if (isConnected) {
+        const supabase = createClientBrowser();
+        const { data } = await supabase.auth.getUser();
+        if (data?.user?.email) email = data.user.email;
+      } else {
+        const local = localStorage.getItem('tiendita_current_staff');
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            email = parsed.email || '';
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      try {
+        const staffList = await dataService.getStaffUsers();
+        const profile = staffList.find((s) => s.email.toLowerCase() === email.toLowerCase());
+        if (profile) {
+          setUserRole(profile.role);
+        } else if (email.toLowerCase().includes('admin')) {
+          setUserRole('admin');
+        } else {
+          setUserRole('despachador');
+        }
+      } catch {
+        setUserRole('despachador');
+      }
+    };
+
+    checkRole();
+  }, [isConnected]);
 
   const fetchProducts = async () => {
     try {
@@ -56,7 +100,13 @@ export default function AdminInventoryPage() {
     return () => window.removeEventListener('tiendita_storage_updated', handleStorage);
   }, []);
 
+  const isAdmin = userRole === 'admin';
+
   const handleStockChange = async (productId: string, newStock: number) => {
+    if (!isAdmin) {
+      message.error('Solo los administradores pueden modificar el inventario.');
+      return;
+    }
     try {
       await dataService.updateProductStock(productId, newStock);
       message.success('Stock actualizado.');
@@ -67,6 +117,10 @@ export default function AdminInventoryPage() {
   };
 
   const handleAddProduct = async (values: any) => {
+    if (!isAdmin) {
+      message.error('Solo los administradores pueden agregar productos.');
+      return;
+    }
     try {
       setSubmitting(true);
       await dataService.addProduct({
@@ -135,13 +189,18 @@ export default function AdminInventoryPage() {
       key: 'stock',
       render: (stock: number, record: Product) => (
         <Space>
-          <InputNumber
-            min={0}
-            max={9999}
-            value={stock}
-            onChange={(val) => handleStockChange(record.id, val || 0)}
-            style={{ width: 80 }}
-          />
+          {isAdmin ? (
+            <InputNumber
+              min={0}
+              max={9999}
+              value={stock}
+              onChange={(val) => handleStockChange(record.id, val || 0)}
+              style={{ width: 80 }}
+            />
+          ) : (
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{stock}</span>
+          )}
+
           {stock === 0 ? (
             <Tag color="error">Agotado</Tag>
           ) : stock <= 3 ? (
@@ -152,20 +211,24 @@ export default function AdminInventoryPage() {
         </Space>
       ),
     },
-    {
-      title: 'Reposición Rápida',
-      key: 'quick',
-      render: (_: any, record: Product) => (
-        <Space>
-          <Button size="small" onClick={() => handleStockChange(record.id, record.stock + 5)}>
-            +5
-          </Button>
-          <Button size="small" onClick={() => handleStockChange(record.id, record.stock + 20)}>
-            +20
-          </Button>
-        </Space>
-      ),
-    },
+    ...(isAdmin
+      ? [
+          {
+            title: 'Reposición Rápida',
+            key: 'quick',
+            render: (_: any, record: Product) => (
+              <Space>
+                <Button size="small" onClick={() => handleStockChange(record.id, record.stock + 5)}>
+                  +5
+                </Button>
+                <Button size="small" onClick={() => handleStockChange(record.id, record.stock + 20)}>
+                  +20
+                </Button>
+              </Space>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -175,11 +238,18 @@ export default function AdminInventoryPage() {
       <main className="main-container">
         <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>
-              Control de Inventario & Stock
-            </Title>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Title level={2} style={{ margin: 0 }}>
+                Control de Inventario & Stock
+              </Title>
+              <Tag color={isAdmin ? 'gold' : 'cyan'}>
+                {isAdmin ? '🛡️ Administrador (Control Total)' : '📦 Despachador (Modo Consulta)'}
+              </Tag>
+            </div>
             <Text type="secondary">
-              Ajusta las cantidades disponibles. Los pedidos descuentan de forma atómica.
+              {isAdmin
+                ? 'Ajusta las cantidades disponibles, crea productos y modifica precios.'
+                : 'Consulta la disponibilidad en tiempo real para atender a los clientes en mostrador.'}
             </Text>
           </div>
 
@@ -187,16 +257,28 @@ export default function AdminInventoryPage() {
             <Button icon={<ReloadOutlined />} onClick={fetchProducts} loading={loading}>
               Actualizar
             </Button>
-            <Button
-              type="primary"
-              style={{ background: '#0d9488' }}
-              icon={<PlusOutlined />}
-              onClick={() => setModalOpen(true)}
-            >
-              Nuevo Producto
-            </Button>
+            {isAdmin && (
+              <Button
+                type="primary"
+                style={{ background: '#0d9488' }}
+                icon={<PlusOutlined />}
+                onClick={() => setModalOpen(true)}
+              >
+                Nuevo Producto
+              </Button>
+            )}
           </Space>
         </div>
+
+        {!isAdmin && (
+          <Alert
+            message="Modo Consulta de Stock"
+            description="Como despachador puedes visualizar las existencias en tiempo real. La edición de stock y agregar nuevos productos requiere rol de Administrador."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
         <Card styles={{ body: { padding: '16px 20px' } }}>
           <Table
@@ -209,7 +291,7 @@ export default function AdminInventoryPage() {
         </Card>
       </main>
 
-      {/* Modal para Crear Producto */}
+      {/* Modal para Crear Producto (Solo Admin) */}
       <Modal
         open={modalOpen}
         title="Agregar Nuevo Producto al Catálogo"
@@ -263,4 +345,3 @@ export default function AdminInventoryPage() {
     </div>
   );
 }
-

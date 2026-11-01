@@ -18,12 +18,14 @@ import {
 import {
   UserOutlined,
   LockOutlined,
-  ShopOutlined,
   SafetyCertificateOutlined,
   CheckCircleOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
+import { dataService } from '@/lib/dataService';
+import { UserRole } from '@/lib/types';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -50,14 +52,21 @@ export default function AdminLoginPage() {
         message.success(`Bienvenido ${data.user.email}`);
         router.push('/admin');
       } else {
-        // En modo demostración local
+        // En modo demostración local, verificar rol en staff_users
+        const staff = await dataService.getStaffUsers();
+        const found = staff.find((s) => s.email.toLowerCase() === values.email.toLowerCase());
+
+        const role: UserRole = found ? found.role : (values.email.includes('admin') ? 'admin' : 'despachador');
+        const name = found ? found.full_name : values.email.split('@')[0];
+
         const demoStaff = {
-          id: 'staff-' + Math.random().toString(36).substring(2, 7),
-          name: values.email.split('@')[0],
+          id: found ? found.id : 'staff-' + Math.random().toString(36).substring(2, 7),
+          name,
           email: values.email,
+          role,
         };
         localStorage.setItem('tiendita_current_staff', JSON.stringify(demoStaff));
-        message.success(`Sesión iniciada como ${demoStaff.name}`);
+        message.success(`Sesión iniciada como ${name} (${role})`);
         router.push('/admin');
       }
     } catch (err: any) {
@@ -68,14 +77,15 @@ export default function AdminLoginPage() {
   };
 
   // Acceso rápido para demostración
-  const handleQuickLogin = (name: string, email: string) => {
+  const handleQuickLogin = (name: string, email: string, role: UserRole) => {
     const demoStaff = {
-      id: 'staff-' + (name === 'Carlos Mora' ? 'carlos' : 'ana'),
+      id: 'staff-' + (role === 'admin' ? 'admin' : email.split('@')[0]),
       name,
       email,
+      role,
     };
     localStorage.setItem('tiendita_current_staff', JSON.stringify(demoStaff));
-    message.success(`Ingresaste como: ${name} (${email})`);
+    message.success(`Ingresaste como: ${name} (${role.toUpperCase()})`);
     router.push('/admin');
   };
 
@@ -109,22 +119,22 @@ export default function AdminLoginPage() {
               <SafetyCertificateOutlined />
             </div>
             <Title level={3} style={{ margin: 0 }}>
-              Acceso a Despacho
+              Acceso a Personal Interno
             </Title>
             <Text type="secondary">
-              Identifícate para despachar pedidos y procesar cobros
+              Ingresa con tu cuenta de Administrador o Despachador
             </Text>
           </div>
 
           <Form layout="vertical" onFinish={onFinish}>
             <Form.Item
-              label="Correo Electrónico del Personal:"
+              label="Correo Electrónico:"
               name="email"
               rules={[{ required: true, message: 'Ingresa tu correo' }]}
             >
               <Input
                 prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
-                placeholder="despacho@tiendita.com"
+                placeholder="usuario@tiendita.com"
                 size="large"
               />
             </Form.Item>
@@ -156,31 +166,50 @@ export default function AdminLoginPage() {
           </Form>
 
           <Divider style={{ margin: '18px 0', fontSize: 13 }}>
-            Acceso Rápido de Prueba (Demo)
+            Acceso Rápido por Rol (Demostración)
           </Divider>
 
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Button
               block
-              onClick={() => handleQuickLogin('Carlos Mora', 'carlos@tiendita.com')}
-              icon={<CheckCircleOutlined style={{ color: '#0d9488' }} />}
-              style={{ textAlign: 'left', height: 42 }}
+              onClick={() => handleQuickLogin('Administrador Principal', 'admin@tiendita.com', 'admin')}
+              icon={<CrownOutlined style={{ color: '#eab308' }} />}
+              style={{ textAlign: 'left', height: 44, borderLeft: '3px solid #eab308' }}
             >
-              Entrar como <strong>Carlos Mora</strong> (Cajero Principal)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span><strong>Admin Principal</strong> (admin@tiendita.com)</span>
+                <Tag color="gold">Acceso Total</Tag>
+              </div>
             </Button>
+
             <Button
               block
-              onClick={() => handleQuickLogin('Ana Gómez', 'ana@tiendita.com')}
+              onClick={() => handleQuickLogin('Carlos Mora', 'carlos@tiendita.com', 'despachador')}
               icon={<CheckCircleOutlined style={{ color: '#0d9488' }} />}
-              style={{ textAlign: 'left', height: 42 }}
+              style={{ textAlign: 'left', height: 44, borderLeft: '3px solid #0d9488' }}
             >
-              Entrar como <strong>Ana Gómez</strong> (Despachadora)
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span><strong>Carlos Mora</strong> (Despachador)</span>
+                <Tag color="cyan">Despacho & Caja</Tag>
+              </div>
+            </Button>
+
+            <Button
+              block
+              onClick={() => handleQuickLogin('Ana Gómez', 'ana@tiendita.com', 'despachador')}
+              icon={<CheckCircleOutlined style={{ color: '#0d9488' }} />}
+              style={{ textAlign: 'left', height: 44, borderLeft: '3px solid #0d9488' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span><strong>Ana Gómez</strong> (Despachadora)</span>
+                <Tag color="cyan">Despacho & Caja</Tag>
+              </div>
             </Button>
           </Space>
 
           <div style={{ textAlign: 'center', marginTop: 20 }}>
             <Link href="/" style={{ color: '#0d9488', fontSize: 13 }}>
-              ← Volver al Catálogo de Clientes
+              ← Ir a la Tienda de Clientes
             </Link>
           </div>
         </Card>
@@ -188,4 +217,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-

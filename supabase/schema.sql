@@ -51,16 +51,57 @@ CREATE TABLE IF NOT EXISTS public.order_items (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 5. Tabla de Usuarios Internos del Sistema (Control Interno & Roles)
+CREATE TABLE IF NOT EXISTS public.staff_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    auth_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT UNIQUE NOT NULL,
+    full_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'despachador' CHECK (role IN ('admin', 'despachador')),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- Índices para optimizar consultas frecuentes
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_expires_at ON public.orders(expires_at);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON public.order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
+CREATE INDEX IF NOT EXISTS idx_staff_users_email ON public.staff_users(email);
+CREATE INDEX IF NOT EXISTS idx_staff_users_role ON public.staff_users(role);
 
 -- Habilitar Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.staff_users;
+
+-- ==============================================================================
+-- TRIGGER PARA SINCRONIZAR USUARIOS DE AUTH CON STAFF_USERS
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_new_staff_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.staff_users (auth_user_id, email, full_name, role)
+  VALUES (
+    new.id,
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    COALESCE(new.raw_user_meta_data->>'role', 'despachador')
+  )
+  ON CONFLICT (email) DO UPDATE
+  SET auth_user_id = new.id,
+      full_name = COALESCE(new.raw_user_meta_data->>'full_name', public.staff_users.full_name),
+      role = COALESCE(new.raw_user_meta_data->>'role', public.staff_users.role);
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_staff_user();
 
 -- ==============================================================================
 -- FUNCIONES RPC TRANSACCIONALES
@@ -76,21 +117,18 @@ DECLARE
     r_order RECORD;
     v_expired_count INTEGER := 0;
 BEGIN
-    -- Recorremos todos los pedidos que siguen pendientes pero pasaron su tiempo límite
     FOR r_order IN 
         SELECT id 
         FROM public.orders 
         WHERE status = 'pending' AND expires_at < now()
         FOR UPDATE
     LOOP
-        -- Restauramos el stock de cada producto del pedido expirado
         UPDATE public.products p
         SET stock = p.stock + oi.quantity,
             updated_at = now()
         FROM public.order_items oi
         WHERE oi.order_id = r_order.id AND p.id = oi.product_id;
 
-        -- Marcamos el pedido como expirado
         UPDATE public.orders
         SET status = 'expired',
             cancellation_reason = 'Tiempo límite de recogida de 10 minutos expirado.'
@@ -126,15 +164,12 @@ DECLARE
     v_order_number TEXT;
     v_expires_at TIMESTAMPTZ;
 BEGIN
-    -- 1. Primero expirar pedidos viejos para liberar stock retenido si aplica
     PERFORM public.expire_stale_orders();
 
-    -- 2. Validar que la lista de items no esté vacía
     IF jsonb_array_length(p_items) = 0 THEN
         RAISE EXCEPTION 'El carrito de compras no puede estar vacío.';
     END IF;
 
-    -- 3. Crear cabecera del pedido (se calculará el total en el proceso)
     v_expires_at := now() + interval '10 minutes';
     INSERT INTO public.orders (
         customer_name,
@@ -153,7 +188,6 @@ BEGIN
     )
     RETURNING id, order_number INTO v_order_id, v_order_number;
 
-    -- 4. Iterar sobre cada item, bloquear producto (FOR UPDATE) y validar stock
     FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
     LOOP
         v_product_id := (v_item->>'product_id')::UUID;
@@ -163,7 +197,6 @@ BEGIN
             RAISE EXCEPTION 'La cantidad solicitada debe ser mayor a cero.';
         END IF;
 
-        -- Bloquear fila del producto para evitar condiciones de carrera (concurrency)
         SELECT name, price, stock INTO v_pname, v_price, v_stock
         FROM public.products
         WHERE id = v_product_id AND is_active = true
@@ -177,13 +210,11 @@ BEGIN
             RAISE EXCEPTION 'Stock insuficiente para "%": solo quedan % unidades disponibles.', v_pname, v_stock;
         END IF;
 
-        -- Descontar el stock del producto
         UPDATE public.products
         SET stock = stock - v_qty,
             updated_at = now()
         WHERE id = v_product_id;
 
-        -- Registrar el item del pedido
         INSERT INTO public.order_items (
             order_id,
             product_id,
@@ -203,12 +234,10 @@ BEGIN
         v_total := v_total + (v_price * v_qty);
     END LOOP;
 
-    -- 5. Actualizar el monto total del pedido
     UPDATE public.orders
     SET total_amount = v_total
     WHERE id = v_order_id;
 
-    -- 6. Retornar los datos del pedido creado
     RETURN jsonb_build_object(
         'order_id', v_order_id,
         'order_number', v_order_number,
@@ -241,21 +270,19 @@ BEGIN
     END IF;
 
     IF v_status = 'cancelled' THEN
-        RETURN true; -- Ya está cancelado
+        RETURN true;
     END IF;
 
     IF v_status = 'dispatched' THEN
         RAISE EXCEPTION 'No se puede anular un pedido que ya ha sido despachado.';
     END IF;
 
-    -- Restaurar stock a los productos
     UPDATE public.products p
     SET stock = p.stock + oi.quantity,
         updated_at = now()
     FROM public.order_items oi
     WHERE oi.order_id = p_order_id AND p.id = oi.product_id;
 
-    -- Actualizar estado a cancelado
     UPDATE public.orders
     SET status = 'cancelled',
         cancellation_reason = COALESCE(p_reason, 'Cancelado')
@@ -299,12 +326,10 @@ BEGIN
     END IF;
 
     IF v_status = 'expired' OR (v_status = 'pending' AND v_expires_at < now()) THEN
-        -- Si ya expiró el tiempo de 10 min, restaurar el inventario si no se había hecho
         PERFORM public.expire_stale_orders();
         RAISE EXCEPTION 'El tiempo límite de 10 minutos para retirar este pedido ya ha expirado.';
     END IF;
 
-    -- Marcar como despachado con la información de pago y el usuario responsable
     UPDATE public.orders
     SET status = 'dispatched',
         dispatched_at = now(),
@@ -329,38 +354,33 @@ $$;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staff_users ENABLE ROW LEVEL SECURITY;
 
--- Reglas para Productos:
--- Cualquiera puede consultar productos activos
+-- Productos:
 CREATE POLICY "Productos visibles para todos" 
 ON public.products FOR SELECT 
 USING (true);
 
--- Personal autenticado puede crear/modificar productos
-CREATE POLICY "Personal autenticado gestiona productos" 
+CREATE POLICY "Personal gestiona productos" 
 ON public.products FOR ALL 
-TO authenticated 
 USING (true) 
 WITH CHECK (true);
 
--- Reglas para Pedidos:
--- Cualquiera puede consultar pedidos (los clientes acceden a su pedido por ID / listado mostrador)
+-- Pedidos:
 CREATE POLICY "Pedidos visibles para consulta" 
 ON public.orders FOR SELECT 
 USING (true);
 
--- Clientes públicos y personal pueden insertar pedidos
 CREATE POLICY "Inserción de pedidos permitida" 
 ON public.orders FOR INSERT 
 WITH CHECK (true);
 
--- Actualización permitida a usuarios autenticados o actualización general
 CREATE POLICY "Actualización de pedidos permitida" 
 ON public.orders FOR UPDATE 
 USING (true)
 WITH CHECK (true);
 
--- Reglas para Items de Pedido:
+-- Items de Pedido:
 CREATE POLICY "Items visibles para consulta" 
 ON public.order_items FOR SELECT 
 USING (true);
@@ -369,3 +389,12 @@ CREATE POLICY "Inserción de items permitida"
 ON public.order_items FOR INSERT 
 WITH CHECK (true);
 
+-- Usuarios de Personal:
+CREATE POLICY "Lectura de usuarios del personal"
+ON public.staff_users FOR SELECT
+USING (true);
+
+CREATE POLICY "Gestión de usuarios de personal"
+ON public.staff_users FOR ALL
+USING (true)
+WITH CHECK (true);
