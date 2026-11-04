@@ -587,299 +587,260 @@ export const dataService = {
     return expiredCount;
   },
 
-  // Actualizar campos de un producto
-  async updateProduct(productId: string, updates: Partial<Product>): Promise<Product | null> {
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('products')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', productId)
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-      return data as Product;
-    }
+    // Actualizar campos de un producto
+    async updateProduct(productId: string, updates: Partial<Product>): Promise < Product | null > {
+      if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { data, error } = await supabase
+    .from('products')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', productId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as Product;
+}
 
-    const products = getLocalProducts();
-    const index = products.findIndex((p) => p.id === productId);
-    if (index !== -1) {
-      products[index] = { ...products[index], ...updates };
-      saveLocalProducts(products);
-      return products[index];
-    }
-    return null;
+const products = getLocalProducts();
+const index = products.findIndex((p) => p.id === productId);
+if (index !== -1) {
+  products[index] = { ...products[index], ...updates };
+  saveLocalProducts(products);
+  return products[index];
+}
+return null;
   },
 
   // Actualizar stock de un producto
-  async updateProductStock(productId: string, newStock: number): Promise<boolean> {
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { error } = await supabase
-        .from('products')
-        .update({ stock: newStock, updated_at: new Date().toISOString() })
-        .eq('id', productId);
-      if (error) throw new Error(error.message);
-      return true;
-    }
+  async updateProductStock(productId: string, newStock: number): Promise < boolean > {
+  if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { error } = await supabase
+    .from('products')
+    .update({ stock: newStock, updated_at: new Date().toISOString() })
+    .eq('id', productId);
+  if (error) throw new Error(error.message);
+  return true;
+}
 
-    const products = getLocalProducts();
-    const index = products.findIndex((p) => p.id === productId);
-    if (index !== -1) {
-      products[index].stock = Math.max(0, newStock);
-      saveLocalProducts(products);
-      return true;
-    }
-    return false;
+const products = getLocalProducts();
+const index = products.findIndex((p) => p.id === productId);
+if (index !== -1) {
+  products[index].stock = Math.max(0, newStock);
+  saveLocalProducts(products);
+  return true;
+}
+return false;
   },
 
   // Añadir un nuevo producto
-  async addProduct(product: Omit<Product, 'id'>): Promise<Product> {
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('products')
-        .insert(product)
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-      return data;
-    }
+  async addProduct(product: Omit<Product, 'id'>): Promise < Product > {
+  if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { data, error } = await supabase
+    .from('products')
+    .insert(product)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
 
-    const products = getLocalProducts();
-    const newProd: Product = {
-      ...product,
-      id: 'prod-' + Math.random().toString(36).substring(2, 9),
-    };
-    products.unshift(newProd);
-    saveLocalProducts(products);
-    return newProd;
+const products = getLocalProducts();
+const newProd: Product = {
+  ...product,
+  id: 'prod-' + Math.random().toString(36).substring(2, 9),
+};
+products.unshift(newProd);
+saveLocalProducts(products);
+return newProd;
   },
 
   // ==========================================================================
   // GESTIÓN DE USUARIOS INTERNOS DEL PERSONAL (CONTROL INTERNO)
   // ==========================================================================
 
-  async getStaffUsers(): Promise<StaffUser[]> {
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('staff_users')
-        .select('*')
-        .order('created_at', { ascending: false });
+  async getStaffUsers(): Promise < StaffUser[] > {
+  if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { data, error } = await supabase
+    .from('staff_users')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        return data as StaffUser[];
-      }
-    }
-    return getLocalStaff();
+  if (!error && data && data.length > 0) {
+    return data as StaffUser[];
+  }
+}
+return getLocalStaff();
   },
 
   async createStaffUser(user: {
-    email: string;
-    full_name: string;
-    role: UserRole;
-    password?: string;
-  }): Promise<StaffUser> {
-    if (this.isUsingSupabase()) {
-      try {
-        const res = await fetch('/api/admin/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(user),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return data;
-        }
-      } catch (e) {
-        console.warn('API error, falling back to direct supabase or local:', e);
-      }
-
-      const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('staff_users')
-        .insert({
-          email: user.email.trim().toLowerCase(),
-          full_name: user.full_name.trim(),
-          role: user.role,
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(error.message);
-      return data as StaffUser;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  password?: string;
+}): Promise < StaffUser > {
+  if(this.isUsingSupabase()) {
+  try {
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
     }
+  } catch (e) {
+    console.warn('API error, falling back to direct supabase or local:', e);
+  }
 
-    const staff = getLocalStaff();
-    const existing = staff.find((s) => s.email.toLowerCase() === user.email.toLowerCase());
-    if (existing) {
-      throw new Error(`El correo ${user.email} ya está registrado.`);
-    }
-
-    const newUser: StaffUser = {
-      id: 'staff-' + Math.random().toString(36).substring(2, 8),
+  const supabase = createClientBrowser();
+  const { data, error } = await supabase
+    .from('staff_users')
+    .insert({
       email: user.email.trim().toLowerCase(),
       full_name: user.full_name.trim(),
       role: user.role,
       is_active: true,
-      created_at: new Date().toISOString(),
-    };
+    })
+    .select()
+    .single();
 
-    staff.unshift(newUser);
-    saveLocalStaff(staff);
-    return newUser;
+  if (error) throw new Error(error.message);
+  return data as StaffUser;
+}
+
+const staff = getLocalStaff();
+const existing = staff.find((s) => s.email.toLowerCase() === user.email.toLowerCase());
+if (existing) {
+  throw new Error(`El correo ${user.email} ya está registrado.`);
+}
+
+const newUser: StaffUser = {
+  id: 'staff-' + Math.random().toString(36).substring(2, 8),
+  email: user.email.trim().toLowerCase(),
+  full_name: user.full_name.trim(),
+  role: user.role,
+  is_active: true,
+  created_at: new Date().toISOString(),
+};
+
+staff.unshift(newUser);
+saveLocalStaff(staff);
+return newUser;
   },
 
   async updateStaffUser(
-    id: string,
-    updates: { role?: UserRole; is_active?: boolean; full_name?: string }
-  ): Promise<boolean> {
-    if (this.isUsingSupabase()) {
-      try {
-        const res = await fetch('/api/admin/users', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, ...updates }),
-        });
-        if (res.ok) return true;
-      } catch (e) {
-        console.warn('API patch error:', e);
-      }
+  id: string,
+  updates: { role?: UserRole; is_active?: boolean; full_name?: string }
+): Promise < boolean > {
+  if(this.isUsingSupabase()) {
+  try {
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    if (res.ok) return true;
+  } catch (e) {
+    console.warn('API patch error:', e);
+  }
 
-      const supabase = createClientBrowser();
-      const { error } = await supabase
-        .from('staff_users')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id);
+  const supabase = createClientBrowser();
+  const { error } = await supabase
+    .from('staff_users')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id);
 
-      if (error) throw new Error(error.message);
-      return true;
-    }
+  if (error) throw new Error(error.message);
+  return true;
+}
 
-    const staff = getLocalStaff();
-    const index = staff.findIndex((s) => s.id === id);
-    if (index === -1) return false;
+const staff = getLocalStaff();
+const index = staff.findIndex((s) => s.id === id);
+if (index === -1) return false;
 
-    staff[index] = { ...staff[index], ...updates };
-    saveLocalStaff(staff);
-    return true;
+staff[index] = { ...staff[index], ...updates };
+saveLocalStaff(staff);
+return true;
   },
 
   // Obtener historial de cortes de caja registrados
-  async getShiftCuts(): Promise<ShiftCut[]> {
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('shift_cuts')
-        .select('*')
-        .order('closed_at', { ascending: false });
-      if (!error && data) {
-        return data as ShiftCut[];
-      }
-    }
-    const cuts = getLocalCuts();
-    return cuts.sort((a, b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime());
+  async getShiftCuts(): Promise < ShiftCut[] > {
+  if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { data, error } = await supabase
+    .from('shift_cuts')
+    .select('*')
+    .order('closed_at', { ascending: false });
+  if (!error && data) {
+    return data as ShiftCut[];
+  }
+}
+const cuts = getLocalCuts();
+return cuts.sort((a, b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime());
   },
 
   // Registrar un corte de caja / cierre de turno por usuario
   async registerShiftCut(payload: {
-    userId?: string | null;
-    userName: string;
-    userRole?: UserRole;
-    cashCounted?: number | null;
-    notes?: string | null;
-  }): Promise<ShiftCut> {
-    const orders = await this.getOrders('dispatched');
-    // Filtrar pedidos despachados por este usuario que aún no pertenezcan a un corte cerrado
-    const unclosedOrders = orders.filter((o) => {
-      const matchName = o.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
-      const matchId = payload.userId && o.dispatched_by_id === payload.userId;
-      return (matchName || matchId) && !o.shift_cut_id;
-    });
+  userId?: string | null;
+  userName: string;
+  userRole?: UserRole;
+  cashCounted?: number | null;
+  notes?: string | null;
+}): Promise < ShiftCut > {
+  const orders = await this.getOrders('dispatched');
+  // Filtrar pedidos despachados por este usuario que aún no pertenezcan a un corte cerrado
+  const unclosedOrders = orders.filter((o) => {
+    const matchName = o.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
+    const matchId = payload.userId && o.dispatched_by_id === payload.userId;
+    return (matchName || matchId) && !o.shift_cut_id;
+  });
 
-    let totalSales = 0;
-    let cashExpected = 0;
-    let cardTotal = 0;
-    let transferTotal = 0;
-    let otherTotal = 0;
+  let totalSales = 0;
+  let cashExpected = 0;
+  let cardTotal = 0;
+  let transferTotal = 0;
+  let otherTotal = 0;
 
-    unclosedOrders.forEach((o) => {
-      totalSales += o.total_amount;
-      (o.payment_details || []).forEach((p) => {
-        if (p.method === 'efectivo') {
-          cashExpected += p.amount;
-        } else if (p.method === 'tarjeta') {
-          cardTotal += p.amount;
-        } else if (p.method === 'transferencia' || p.method === 'sinpe') {
-          transferTotal += p.amount;
-        } else {
-          otherTotal += p.amount;
-        }
-      });
-    });
-
-    const cashDiff = payload.cashCounted !== null && payload.cashCounted !== undefined
-      ? payload.cashCounted - cashExpected
-      : null;
-
-    const startedAt = unclosedOrders.length > 0
-      ? unclosedOrders[unclosedOrders.length - 1].dispatched_at || unclosedOrders[unclosedOrders.length - 1].created_at
-      : new Date().toISOString();
-
-    const closedAt = new Date().toISOString();
-
-    if (this.isUsingSupabase()) {
-      const supabase = createClientBrowser();
-      const { count } = await supabase.from('shift_cuts').select('*', { count: 'exact', head: true });
-      const cutSeq = (count || 0) + 1;
-      const cutNumber = `CORTE-${cutSeq.toString().padStart(3, '0')}`;
-
-      const { data: newCut, error } = await supabase
-        .from('shift_cuts')
-        .insert({
-          cut_number: cutNumber,
-          user_id: payload.userId || null,
-          user_name: payload.userName,
-          user_role: payload.userRole || 'despachador',
-          started_at: startedAt,
-          closed_at: closedAt,
-          orders_count: unclosedOrders.length,
-          total_sales: totalSales,
-          cash_expected: cashExpected,
-          cash_counted: payload.cashCounted ?? null,
-          cash_difference: cashDiff,
-          card_total: cardTotal,
-          transfer_total: transferTotal,
-          other_total: otherTotal,
-          notes: payload.notes || null,
-          status: 'closed',
-        })
-        .select()
-        .single();
-
-      if (!error && newCut) {
-        if (unclosedOrders.length > 0) {
-          const orderIds = unclosedOrders.map((o) => o.id);
-          await supabase
-            .from('orders')
-            .update({ shift_cut_id: newCut.id })
-            .in('id', orderIds);
-        }
-        return newCut as ShiftCut;
+  unclosedOrders.forEach((o) => {
+    totalSales += o.total_amount;
+    (o.payment_details || []).forEach((p) => {
+      if (p.method === 'efectivo') {
+        cashExpected += p.amount;
+      } else if (p.method === 'tarjeta') {
+        cardTotal += p.amount;
+      } else if (p.method === 'transferencia' || p.method === 'sinpe') {
+        transferTotal += p.amount;
+      } else {
+        otherTotal += p.amount;
       }
-    }
+    });
+  });
 
-    // LocalStorage Fallback
-    const localCuts = getLocalCuts();
-    const cutNumber = `CORTE-${(localCuts.length + 1).toString().padStart(3, '0')}`;
-    const cutId = 'cut-' + Date.now();
+  const cashDiff = payload.cashCounted !== null && payload.cashCounted !== undefined
+    ? payload.cashCounted - cashExpected
+    : null;
 
-    const createdCut: ShiftCut = {
-      id: cutId,
+  const startedAt = unclosedOrders.length > 0
+    ? unclosedOrders[unclosedOrders.length - 1].dispatched_at || unclosedOrders[unclosedOrders.length - 1].created_at
+    : new Date().toISOString();
+
+  const closedAt = new Date().toISOString();
+
+  if(this.isUsingSupabase()) {
+  const supabase = createClientBrowser();
+  const { count } = await supabase.from('shift_cuts').select('*', { count: 'exact', head: true });
+  const cutSeq = (count || 0) + 1;
+  const cutNumber = `CORTE-${cutSeq.toString().padStart(3, '0')}`;
+
+  const { data: newCut, error } = await supabase
+    .from('shift_cuts')
+    .insert({
       cut_number: cutNumber,
-      user_id: payload.userId,
+      user_id: payload.userId || null,
       user_name: payload.userName,
       user_role: payload.userRole || 'despachador',
       started_at: startedAt,
@@ -894,22 +855,61 @@ export const dataService = {
       other_total: otherTotal,
       notes: payload.notes || null,
       status: 'closed',
-      created_at: closedAt,
-    };
+    })
+    .select()
+    .single();
 
-    localCuts.unshift(createdCut);
-    saveLocalCuts(localCuts);
+  if (!error && newCut) {
+    if (unclosedOrders.length > 0) {
+      const orderIds = unclosedOrders.map((o) => o.id);
+      await supabase
+        .from('orders')
+        .update({ shift_cut_id: newCut.id })
+        .in('id', orderIds);
+    }
+    return newCut as ShiftCut;
+  }
+}
 
-    const allLocalOrders = getLocalOrders();
-    allLocalOrders.forEach((lo) => {
-      const matchName = lo.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
-      const matchId = payload.userId && lo.dispatched_by_id === payload.userId;
-      if (lo.status === 'dispatched' && !lo.shift_cut_id && (matchName || matchId)) {
-        lo.shift_cut_id = cutId;
-      }
-    });
-    saveLocalOrders(allLocalOrders);
+// LocalStorage Fallback
+const localCuts = getLocalCuts();
+const cutNumber = `CORTE-${(localCuts.length + 1).toString().padStart(3, '0')}`;
+const cutId = 'cut-' + Date.now();
 
-    return createdCut;
+const createdCut: ShiftCut = {
+  id: cutId,
+  cut_number: cutNumber,
+  user_id: payload.userId,
+  user_name: payload.userName,
+  user_role: payload.userRole || 'despachador',
+  started_at: startedAt,
+  closed_at: closedAt,
+  orders_count: unclosedOrders.length,
+  total_sales: totalSales,
+  cash_expected: cashExpected,
+  cash_counted: payload.cashCounted ?? null,
+  cash_difference: cashDiff,
+  card_total: cardTotal,
+  transfer_total: transferTotal,
+  other_total: otherTotal,
+  notes: payload.notes || null,
+  status: 'closed',
+  created_at: closedAt,
+};
+
+localCuts.unshift(createdCut);
+saveLocalCuts(localCuts);
+
+const allLocalOrders = getLocalOrders();
+allLocalOrders.forEach((lo) => {
+  const matchName = lo.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
+  const matchId = payload.userId && lo.dispatched_by_id === payload.userId;
+  if (lo.status === 'dispatched' && !lo.shift_cut_id && (matchName || matchId)) {
+    lo.shift_cut_id = cutId;
+  }
+});
+saveLocalOrders(allLocalOrders);
+
+return createdCut;
   },
 };

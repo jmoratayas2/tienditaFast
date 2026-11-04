@@ -1,13 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Modal, Button, Input, Space, Alert, Typography } from 'antd';
 import {
   ScanOutlined,
-  CameraOutlined,
-  CloseOutlined,
-  ThunderboltOutlined,
   CheckCircleOutlined,
+  CameraOutlined,
 } from '@ant-design/icons';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
@@ -20,9 +18,10 @@ interface BarcodeScannerModalProps {
   title?: string;
 }
 
-// Reproducir beep nativo usando Web Audio API
+// Reproducir beep nativo usando Web Audio API con protección total
 function playScanBeep() {
   try {
+    if (typeof window === 'undefined') return;
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
@@ -36,7 +35,7 @@ function playScanBeep() {
     osc.start();
     osc.stop(ctx.currentTime + 0.1);
   } catch {
-    // ignore
+    // Silencioso en caso de restricciones de autoplay
   }
 }
 
@@ -50,27 +49,100 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [lastScanned, setLastScanned] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+
+  // ID único para cada instancia para evitar colisiones en el DOM
+  const containerIdRef = useRef(`scanner-box-${Math.random().toString(36).substring(2, 9)}`);
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const readerElementId = 'html5-barcode-scanner-viewport';
+  const isCancelledRef = useRef(false);
+  const isStartingRef = useRef(false);
+
+  // Detener el escáner y la cámara de forma 100% segura
+  const safeStopScanner = useCallback(async () => {
+    isCancelledRef.current = true;
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+    setIsScanning(false);
+
+    // 1. Apagar directamente las pistas de video activas en el hardware del dispositivo
+    try {
+      const container = document.getElementById(containerIdRef.current);
+      if (container) {
+        const video = container.querySelector('video') as HTMLVideoElement | null;
+        if (video && video.srcObject) {
+          const stream = video.srcObject as MediaStream;
+          stream.getTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch {}
+          });
+          video.srcObject = null;
+        }
+      }
+    } catch {}
+
+    // 2. Detener Html5Qrcode si está activo
+    if (scanner) {
+      try {
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
+      } catch (err) {
+        // Ignorar errores normales de transición al detener
+      }
+
+      // 3. Limpiar el contenedor sólo si aún existe en el DOM
+      try {
+        const container = document.getElementById(containerIdRef.current);
+        if (container) {
+          scanner.clear();
+          container.innerHTML = '';
+        }
+      } catch (err) {
+        // Ignorar
+      }
+    }
+  }, []);
+
+  // Manejar el cierre controlado de la ventana
+  const handleControlledClose = async () => {
+    if (stopping) return;
+    setStopping(true);
+    try {
+      await safeStopScanner();
+    } finally {
+      setStopping(false);
+      setLastScanned(null);
+      setCameraError(null);
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (!visible) {
-      stopScanner();
-      setLastScanned(null);
-      setCameraError(null);
+      safeStopScanner();
       return;
     }
 
-    let isMounted = true;
+    isCancelledRef.current = false;
+    let timer: NodeJS.Timeout | null = null;
 
     const startScanner = async () => {
       try {
         setCameraError(null);
-        // Esperar a que el elemento del DOM exista en el modal
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        if (!isMounted) return;
+        isStartingRef.current = true;
 
-        const html5QrCode = new Html5Qrcode(readerElementId, {
+        // Esperar a que el contenedor esté renderizado y visible en el DOM
+        await new Promise((resolve) => {
+          timer = setTimeout(resolve, 350);
+        });
+
+        if (isCancelledRef.current) return;
+
+        const container = document.getElementById(containerIdRef.current);
+        if (!container) return;
+
+        const html5QrCode = new Html5Qrcode(containerIdRef.current, {
           formatsToSupport: [
             Html5QrcodeSupportedFormats.QR_CODE,
             Html5QrcodeSupportedFormats.EAN_13,
@@ -98,47 +170,35 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             onScan(decodedText);
           },
           () => {
-            // escaneo continuo sin error
+            // Escaneo continuo normal
           }
         );
 
-        if (isMounted) setIsScanning(true);
+        if (isCancelledRef.current) {
+          await safeStopScanner();
+          return;
+        }
+
+        setIsScanning(true);
       } catch (err: any) {
-        if (!isMounted) return;
-        console.warn('Error inicializando cámara:', err);
+        if (isCancelledRef.current) return;
+        console.warn('Acceso a cámara no disponible o cancelado:', err);
         setCameraError(
           err.message ||
-            'No se pudo acceder a la cámara. Por favor autoriza el permiso de cámara en tu navegador o ingresa el código manualmente.'
+            'No se pudo iniciar la cámara. Verifica los permisos de cámara en tu navegador o escribe el código manualmente.'
         );
+      } finally {
+        isStartingRef.current = false;
       }
     };
 
     startScanner();
 
     return () => {
-      isMounted = false;
-      stopScanner();
+      if (timer) clearTimeout(timer);
+      safeStopScanner();
     };
-  }, [visible]);
-
-  const stopScanner = () => {
-    if (scannerRef.current) {
-      if (scannerRef.current.isScanning) {
-        scannerRef.current
-          .stop()
-          .catch(() => {})
-          .then(() => {
-            scannerRef.current?.clear();
-            scannerRef.current = null;
-            setIsScanning(false);
-          });
-      } else {
-        scannerRef.current.clear();
-        scannerRef.current = null;
-        setIsScanning(false);
-      }
-    }
-  };
+  }, [visible, safeStopScanner, onScan]);
 
   const handleManualSubmit = () => {
     const code = manualCode.trim();
@@ -152,7 +212,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   return (
     <Modal
       open={visible}
-      onCancel={onClose}
+      onCancel={handleControlledClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <ScanOutlined style={{ color: '#0d9488', fontSize: 20 }} />
@@ -160,27 +220,44 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
         </div>
       }
       footer={[
-        <Button key="close" onClick={onClose}>
+        <Button
+          key="close"
+          onClick={handleControlledClose}
+          loading={stopping}
+        >
           Cerrar Escáner
         </Button>,
       ]}
       width={460}
-      destroyOnClose
+      maskClosable={false}
+      // NO USAR destroyOnClose para evitar destruir el nodo mientras la cámara se apaga
     >
       <div style={{ padding: '8px 0' }}>
-        {/* Viewport de Cámara */}
+        {/* Contenedor del Visor de Cámara */}
         <div
-          id={readerElementId}
+          id={containerIdRef.current}
           style={{
             width: '100%',
             minHeight: 250,
             borderRadius: 12,
             overflow: 'hidden',
-            backgroundColor: '#000000',
+            backgroundColor: '#0f172a',
             position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#94a3b8',
           }}
-        />
+        >
+          {!isScanning && !cameraError && (
+            <div style={{ textAlign: 'center', padding: 20 }}>
+              <CameraOutlined style={{ fontSize: 32, marginBottom: 8 }} />
+              <div>Iniciando cámara...</div>
+            </div>
+          )}
+        </div>
 
+        {/* Indicador de último escaneado */}
         {lastScanned && (
           <div
             style={{
@@ -201,24 +278,25 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           </div>
         )}
 
+        {/* Alerta de permisos si falló */}
         {cameraError && (
           <Alert
             type="warning"
             showIcon
-            message="Acceso a Cámara no disponible"
+            message="Cámara no disponible"
             description={cameraError}
             style={{ marginTop: 12 }}
           />
         )}
 
-        {/* Input manual rápido (para lector USB o teclado) */}
+        {/* Entrada manual / Lector USB */}
         <div style={{ marginTop: 16 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            O escribe o escanea con pistola USB/Bluetooth:
+            O escribe o escanea con lector USB / Bluetooth:
           </Text>
           <Space.Compact style={{ width: '100%', marginTop: 4 }}>
             <Input
-              placeholder="Código de barra (ej: 7401001) o ID..."
+              placeholder="Código de barra (ej: 7401001) o nombre..."
               value={manualCode}
               onChange={(e) => setManualCode(e.target.value)}
               onPressEnter={handleManualSubmit}
@@ -237,4 +315,3 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     </Modal>
   );
 };
-
