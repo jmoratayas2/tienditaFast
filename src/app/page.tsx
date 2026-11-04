@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import {
   Typography,
   Input,
@@ -21,7 +20,6 @@ import {
   SearchOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
-  SafetyCertificateOutlined,
   StarFilled,
   ShopOutlined,
   CheckCircleOutlined,
@@ -297,16 +295,10 @@ export default function StorefrontPage() {
         )}
       </main>
 
-      {/* Footer para Clientes con enlace discreto a personal */}
+      {/* Footer para Clientes */}
       <footer style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0', padding: '24px 16px', marginTop: 40 }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ fontSize: 13, color: '#64748b' }}>
-            © {new Date().getFullYear()} <strong>La Tiendita</strong>. Plataforma de Pedidos Rápidos en Mostrador.
-          </div>
-          <Link href="/admin/login" style={{ fontSize: 13, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <SafetyCertificateOutlined />
-            <span>Acceso Personal Administrativo</span>
-          </Link>
+        <div style={{ maxWidth: 1200, margin: '0 auto', textAlign: 'center', fontSize: 13, color: '#64748b' }}>
+          © {new Date().getFullYear()} <strong>La Tiendita</strong>. Plataforma de Pedidos Rápidos en Mostrador.
         </div>
       </footer>
 

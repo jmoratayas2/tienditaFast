@@ -277,7 +277,7 @@ export default function OrderTrackingPage({
                 2. Indica tu número de pedido: <strong>#{order.order_number}</strong> o tu nombre <strong>{order.customer_name}</strong>.
               </Paragraph>
               <Paragraph style={{ fontSize: 14 }}>
-                3. Realiza el pago mediante Efectivo, Tarjeta o SINPE al momento de retirar.
+                3. Realiza el pago mediante Efectivo, Tarjeta o Transferencia al momento de retirar.
               </Paragraph>
 
               {order.customer_notes && (

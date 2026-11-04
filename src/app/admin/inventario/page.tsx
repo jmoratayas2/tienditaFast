@@ -488,8 +488,8 @@ export default function AdminInventoryPage() {
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Precio Unitario:" name="price" rules={[{ required: true }]}>
-                <InputNumber min={1} style={{ width: '100%' }} />
+              <Form.Item label="Precio Unitario (Q):" name="price" rules={[{ required: true }]}>
+                <InputNumber min={0.25} step={0.5} prefix="Q" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
@@ -625,8 +625,8 @@ export default function AdminInventoryPage() {
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Precio Unitario:" name="price" rules={[{ required: true, message: 'Ingresa el precio' }]}>
-                <InputNumber min={1} style={{ width: '100%' }} placeholder="Ej: 2500" />
+              <Form.Item label="Precio Unitario (Q):" name="price" rules={[{ required: true, message: 'Ingresa el precio' }]}>
+                <InputNumber min={0.25} step={0.5} prefix="Q" style={{ width: '100%' }} placeholder="Ej: 25.00" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>

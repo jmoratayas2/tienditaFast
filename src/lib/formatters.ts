@@ -1,8 +1,8 @@
 import { Product } from './types';
 
-export function formatCurrency(amount: number, currency: string = '₡'): string {
-  const formatted = new Intl.NumberFormat('es-CR', {
-    minimumFractionDigits: 0,
+export function formatCurrency(amount: number, currency: string = 'Q'): string {
+  const formatted = new Intl.NumberFormat('es-GT', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
   return `${currency} ${formatted}`;
@@ -11,7 +11,7 @@ export function formatCurrency(amount: number, currency: string = '₡'): string
 export function formatDateTime(dateStr?: string | null): string {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
-  return new Intl.DateTimeFormat('es-CR', {
+  return new Intl.DateTimeFormat('es-GT', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',

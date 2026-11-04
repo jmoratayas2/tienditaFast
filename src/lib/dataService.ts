@@ -2,7 +2,7 @@ import { createClientBrowser, isSupabaseConfigured } from './supabase/client';
 import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole, StoreSettings } from './types';
 import { INITIAL_PRODUCTS, DEFAULT_STORE_SETTINGS } from './mockData';
 
-const MOCK_PRODUCTS_KEY = 'tiendita_products';
+const MOCK_PRODUCTS_KEY = 'tiendita_products_gtq';
 const MOCK_ORDERS_KEY = 'tiendita_orders';
 const MOCK_ORDER_SEQ_KEY = 'tiendita_order_seq';
 const MOCK_STAFF_KEY = 'tiendita_staff_users';
@@ -44,7 +44,13 @@ const getLocalProducts = (): Product[] => {
     return INITIAL_PRODUCTS;
   }
   try {
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored);
+    // Si contiene precios antiguos en colones (> 300), reiniciar a precios en quetzales
+    if (Array.isArray(parsed) && parsed.some((p: Product) => p.price > 300)) {
+      localStorage.setItem(MOCK_PRODUCTS_KEY, JSON.stringify(INITIAL_PRODUCTS));
+      return INITIAL_PRODUCTS;
+    }
+    return parsed;
   } catch {
     return INITIAL_PRODUCTS;
   }

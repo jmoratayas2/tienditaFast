@@ -258,9 +258,9 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                     onChange={(val: PaymentMethodType) => updatePayment(index, { method: val })}
                     options={[
                       { value: 'efectivo', label: '💵 Efectivo' },
-                      { value: 'tarjeta', label: '💳 Tarjeta / Datafono' },
-                      { value: 'sinpe', label: '📱 SINPE Móvil / QR' },
-                      { value: 'transferencia', label: '🏦 Transferencia' },
+                      { value: 'tarjeta', label: '💳 Tarjeta / POS' },
+                      { value: 'transferencia', label: '🏦 Transferencia Bancaria' },
+                      { value: 'sinpe', label: '📱 Transferencia Móvil / QR' },
                       { value: 'otro', label: 'Otro' },
                     ]}
                   />
@@ -332,7 +332,7 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                       Número de Comprobante / Referencia:
                     </Text>
                     <Input
-                      placeholder="Ej: Autorización #58203 o Comprobante SINPE"
+                      placeholder="Ej: Autorización #58203 o No. de Transferencia / Boleta"
                       value={p.reference || ''}
                       onChange={(e) => updatePayment(index, { reference: e.target.value })}
                       style={{ marginTop: 2 }}
