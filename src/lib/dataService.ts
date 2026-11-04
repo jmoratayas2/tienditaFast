@@ -13,6 +13,8 @@ const INITIAL_STAFF_USERS: StaffUser[] = [
   {
     id: 'staff-admin-01',
     email: 'admin@tiendita.com',
+    first_name: 'Administrador',
+    last_name: 'Principal',
     full_name: 'Administrador Principal',
     role: 'admin',
     is_active: true,
@@ -21,6 +23,8 @@ const INITIAL_STAFF_USERS: StaffUser[] = [
   {
     id: 'staff-carlos-02',
     email: 'carlos@tiendita.com',
+    first_name: 'Carlos',
+    last_name: 'Mora',
     full_name: 'Carlos Mora',
     role: 'despachador',
     is_active: true,
@@ -29,6 +33,8 @@ const INITIAL_STAFF_USERS: StaffUser[] = [
   {
     id: 'staff-ana-03',
     email: 'ana@tiendita.com',
+    first_name: 'Ana',
+    last_name: 'Gómez',
     full_name: 'Ana Gómez',
     role: 'despachador',
     is_active: true,
@@ -676,95 +682,128 @@ return getLocalStaff();
   },
 
   async createStaffUser(user: {
-  email: string;
-  full_name: string;
-  role: UserRole;
-  password?: string;
-}): Promise < StaffUser > {
-  if(this.isUsingSupabase()) {
-  try {
-    const res = await fetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data;
-    }
-  } catch (e) {
-    console.warn('API error, falling back to direct supabase or local:', e);
-  }
+    email: string;
+    full_name: string;
+    first_name?: string;
+    last_name?: string;
+    role: UserRole;
+    password?: string;
+  }): Promise<StaffUser> {
+    const finalFirstName = (user.first_name || '').trim();
+    const finalLastName = (user.last_name || '').trim();
+    const finalFullName = (
+      user.full_name ||
+      `${finalFirstName} ${finalLastName}`.trim() ||
+      finalFirstName ||
+      'Personal de Tienda'
+    ).trim();
 
-  const supabase = createClientBrowser();
-  const { data, error } = await supabase
-    .from('staff_users')
-    .insert({
+    if (this.isUsingSupabase()) {
+      try {
+        const res = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...user,
+            first_name: finalFirstName || undefined,
+            last_name: finalLastName || undefined,
+            full_name: finalFullName,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return data;
+        }
+      } catch (e) {
+        console.warn('API error, falling back to direct supabase or local:', e);
+      }
+
+      const supabase = createClientBrowser();
+      const { data, error } = await supabase
+        .from('staff_users')
+        .insert({
+          email: user.email.trim().toLowerCase(),
+          full_name: finalFullName,
+          first_name: finalFirstName || null,
+          last_name: finalLastName || null,
+          role: user.role,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data as StaffUser;
+    }
+
+    const staff = getLocalStaff();
+    const existing = staff.find((s) => s.email.toLowerCase() === user.email.toLowerCase());
+    if (existing) {
+      throw new Error(`El correo ${user.email} ya está registrado.`);
+    }
+
+    const newUser: StaffUser = {
+      id: 'staff-' + Math.random().toString(36).substring(2, 8),
       email: user.email.trim().toLowerCase(),
-      full_name: user.full_name.trim(),
+      first_name: finalFirstName || undefined,
+      last_name: finalLastName || undefined,
+      full_name: finalFullName,
       role: user.role,
       is_active: true,
-    })
-    .select()
-    .single();
+      created_at: new Date().toISOString(),
+    };
 
-  if (error) throw new Error(error.message);
-  return data as StaffUser;
-}
-
-const staff = getLocalStaff();
-const existing = staff.find((s) => s.email.toLowerCase() === user.email.toLowerCase());
-if (existing) {
-  throw new Error(`El correo ${user.email} ya está registrado.`);
-}
-
-const newUser: StaffUser = {
-  id: 'staff-' + Math.random().toString(36).substring(2, 8),
-  email: user.email.trim().toLowerCase(),
-  full_name: user.full_name.trim(),
-  role: user.role,
-  is_active: true,
-  created_at: new Date().toISOString(),
-};
-
-staff.unshift(newUser);
-saveLocalStaff(staff);
-return newUser;
+    staff.unshift(newUser);
+    saveLocalStaff(staff);
+    return newUser;
   },
 
   async updateStaffUser(
-  id: string,
-  updates: { role?: UserRole; is_active?: boolean; full_name?: string }
-): Promise < boolean > {
-  if(this.isUsingSupabase()) {
-  try {
-    const res = await fetch('/api/admin/users', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
-    });
-    if (res.ok) return true;
-  } catch (e) {
-    console.warn('API patch error:', e);
-  }
+    id: string,
+    updates: {
+      role?: UserRole;
+      is_active?: boolean;
+      full_name?: string;
+      first_name?: string;
+      last_name?: string;
+    }
+  ): Promise<boolean> {
+    const finalUpdates = { ...updates };
+    if (updates.first_name !== undefined || updates.last_name !== undefined) {
+      if (!updates.full_name) {
+        finalUpdates.full_name = `${updates.first_name || ''} ${updates.last_name || ''}`.trim();
+      }
+    }
 
-  const supabase = createClientBrowser();
-  const { error } = await supabase
-    .from('staff_users')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    if (this.isUsingSupabase()) {
+      try {
+        const res = await fetch('/api/admin/users', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, ...finalUpdates }),
+        });
+        if (res.ok) return true;
+      } catch (e) {
+        console.warn('API patch error:', e);
+      }
 
-  if (error) throw new Error(error.message);
-  return true;
-}
+      const supabase = createClientBrowser();
+      const { error } = await supabase
+        .from('staff_users')
+        .update({ ...finalUpdates, updated_at: new Date().toISOString() })
+        .eq('id', id);
 
-const staff = getLocalStaff();
-const index = staff.findIndex((s) => s.id === id);
-if (index === -1) return false;
+      if (error) throw new Error(error.message);
+      return true;
+    }
 
-staff[index] = { ...staff[index], ...updates };
-saveLocalStaff(staff);
-return true;
+    const staff = getLocalStaff();
+    const index = staff.findIndex((s) => s.id === id);
+    if (index === -1) return false;
+
+    staff[index] = { ...staff[index], ...finalUpdates };
+    saveLocalStaff(staff);
+    return true;
   },
 
   // Obtener historial de cortes de caja registrados

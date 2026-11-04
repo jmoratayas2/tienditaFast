@@ -71,6 +71,16 @@ export default function AdminLoginPage() {
             role: staffProfile.role as UserRole,
           };
           localStorage.setItem('tiendita_current_staff', JSON.stringify(staffSession));
+        } else {
+          // Si no existe fila en staff_users, registrar sesión con su nombre completo de metadatos o por defecto
+          const metaName = authData.user?.user_metadata?.full_name || 'Administrador Principal';
+          const staffSession = {
+            id: authData.user.id,
+            name: metaName,
+            email: email,
+            role: email.includes('admin') ? ('admin' as UserRole) : ('despachador' as UserRole),
+          };
+          localStorage.setItem('tiendita_current_staff', JSON.stringify(staffSession));
         }
 
         message.success('Inicio de sesión exitoso');

@@ -25,7 +25,7 @@ import {
 } from '@ant-design/icons';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 import { dataService } from '@/lib/dataService';
-import { UserRole } from '@/lib/types';
+import { UserRole, StaffUser } from '@/lib/types';
 
 interface NavbarProps {
   cartCount?: number;
@@ -36,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
   const pathname = usePathname();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [staffProfile, setStaffProfile] = useState<StaffUser | null>(null);
   const [userRole, setUserRole] = useState<UserRole>('despachador');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isConnected = isSupabaseConfigured();
@@ -47,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
         (s) => s.email.toLowerCase() === userEmail.toLowerCase()
       );
       if (profile) {
+        setStaffProfile(profile);
         setUserRole(profile.role);
         return;
       }
@@ -58,6 +60,22 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
     } else {
       setUserRole('despachador');
     }
+  };
+
+  const getUserDisplayName = () => {
+    if (staffProfile?.full_name) return staffProfile.full_name;
+    if (currentUser?.name && !currentUser.name.includes('@')) return currentUser.name;
+    if (currentUser?.user_metadata?.full_name) return currentUser.user_metadata.full_name;
+    if (typeof window !== 'undefined') {
+      const local = localStorage.getItem('tiendita_current_staff');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          if (parsed.name && !parsed.name.includes('@')) return parsed.name;
+        } catch {}
+      }
+    }
+    return currentUser?.email || 'Personal de Tienda';
   };
 
   useEffect(() => {
@@ -172,7 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
                       {isAdmin ? '🛡️ Admin' : '📦 Despachador'}
                     </Tag>
                     <span className="admin-user-name">
-                      {currentUser?.name || currentUser?.email?.split('@')[0]}
+                      {getUserDisplayName()}
                     </span>
                   </div>
                 )}
@@ -300,7 +318,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
                           color: '#0f172a',
                         }}
                       >
-                        {currentUser?.name || currentUser?.email?.split('@')[0]}
+                        {getUserDisplayName()}
                       </div>
                       <div style={{ fontSize: 11, color: '#64748b', marginBottom: 3, textOverflow: 'ellipsis', overflow: 'hidden' }}>
                         {currentUser?.email}

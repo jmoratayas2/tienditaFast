@@ -25,11 +25,20 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, full_name, role } = body;
+    const { email, password, full_name, first_name, last_name, role } = body;
 
-    if (!email || !full_name) {
+    const finalFirstName = (first_name || '').trim();
+    const finalLastName = (last_name || '').trim();
+    const finalFullName = (
+      full_name ||
+      `${finalFirstName} ${finalLastName}`.trim() ||
+      finalFirstName ||
+      'Personal de Tienda'
+    ).trim();
+
+    if (!email || !finalFullName) {
       return NextResponse.json(
-        { error: 'Email y nombre completo son requeridos' },
+        { error: 'Email, nombres y apellidos son requeridos' },
         { status: 400 }
       );
     }
@@ -49,7 +58,9 @@ export async function POST(request: Request) {
           password,
           email_confirm: true,
           user_metadata: {
-            full_name: full_name.trim(),
+            full_name: finalFullName,
+            first_name: finalFirstName || undefined,
+            last_name: finalLastName || undefined,
             role: role || 'despachador',
           },
         });
@@ -65,7 +76,9 @@ export async function POST(request: Request) {
           password,
           options: {
             data: {
-              full_name: full_name.trim(),
+              full_name: finalFullName,
+              first_name: finalFirstName || undefined,
+              last_name: finalLastName || undefined,
               role: role || 'despachador',
             },
           },
@@ -85,7 +98,9 @@ export async function POST(request: Request) {
       .upsert(
         {
           email: email.trim().toLowerCase(),
-          full_name: full_name.trim(),
+          full_name: finalFullName,
+          first_name: finalFirstName || null,
+          last_name: finalLastName || null,
           role: role || 'despachador',
           is_active: true,
           auth_user_id: authUserId,
@@ -109,7 +124,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, role, is_active } = body;
+    const { id, role, is_active, full_name, first_name, last_name } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID es requerido' }, { status: 400 });
@@ -119,6 +134,14 @@ export async function PATCH(request: Request) {
     const updates: any = { updated_at: new Date().toISOString() };
     if (role !== undefined) updates.role = role;
     if (is_active !== undefined) updates.is_active = is_active;
+    if (first_name !== undefined) updates.first_name = first_name.trim();
+    if (last_name !== undefined) updates.last_name = last_name.trim();
+
+    if (full_name !== undefined) {
+      updates.full_name = full_name.trim();
+    } else if (first_name !== undefined || last_name !== undefined) {
+      updates.full_name = `${first_name || ''} ${last_name || ''}`.trim();
+    }
 
     const { data, error } = await supabase
       .from('staff_users')

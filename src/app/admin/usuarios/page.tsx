@@ -15,24 +15,20 @@ import {
   Select,
   Switch,
   Alert,
-  Popconfirm,
   Result,
-  Spin,
   Row,
   Col,
   message,
 } from 'antd';
 import {
   UserAddOutlined,
-  TeamOutlined,
-  SafetyCertificateOutlined,
+  EditOutlined,
   ReloadOutlined,
-  CheckCircleOutlined,
-  StopOutlined,
   ArrowLeftOutlined,
   LockOutlined,
   MailOutlined,
   UserOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { StaffUser, UserRole } from '@/lib/types';
@@ -40,16 +36,56 @@ import { dataService } from '@/lib/dataService';
 import { formatDateTime } from '@/lib/formatters';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
+
+// Separar inteligentemente nombres y apellidos
+function parseUserNames(user: StaffUser) {
+  if (user.first_name && user.last_name) {
+    return {
+      firstName: user.first_name.trim(),
+      lastName: user.last_name.trim(),
+      fullName: `${user.first_name} ${user.last_name}`.trim(),
+    };
+  }
+
+  const rawFull = (user.full_name || '').trim();
+  if (!rawFull) {
+    return { firstName: '', lastName: '', fullName: 'Personal de Tienda' };
+  }
+
+  const parts = rawFull.split(/\s+/);
+  if (parts.length <= 1) {
+    return { firstName: parts[0] || '', lastName: '', fullName: rawFull };
+  }
+
+  // Si tiene 2 partes: parte 1 nombre, parte 2 apellido
+  // Si tiene 3 o 4 partes: las últimas son apellidos (común en Latinoamérica)
+  if (parts.length === 2) {
+    return { firstName: parts[0], lastName: parts[1], fullName: rawFull };
+  }
+
+  const lastName = parts.slice(-2).join(' ');
+  const firstName = parts.slice(0, -2).join(' ');
+  return { firstName, lastName, fullName: rawFull };
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<UserRole>('despachador');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [form] = Form.useForm();
+
+  // Modal para Crear Usuario
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createForm] = Form.useForm();
+
+  // Modal para Editar Usuario
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editForm] = Form.useForm();
+
   const isConnected = isSupabaseConfigured();
 
   // Cargar usuario autenticado y su rol
@@ -70,13 +106,11 @@ export default function AdminUsersPage() {
             const parsed = JSON.parse(localUser);
             setCurrentUser(parsed);
             email = parsed.email || '';
-          } catch {
-            // ignore
-          }
+          } catch {}
         }
       }
 
-      // Validar rol
+      // Cargar lista de personal
       const staff = await dataService.getStaffUsers();
       setUsers(staff);
       setLoading(false);
@@ -100,30 +134,94 @@ export default function AdminUsersPage() {
       const data = await dataService.getStaffUsers();
       setUsers(data);
     } catch (err: any) {
-      message.error(err.message || 'Error cargando personal');
+      message.error(err.message || 'Error cargando lista de personal');
     } finally {
       setLoading(false);
     }
   };
 
+  // Crear usuario con Nombres y Apellidos separados
   const handleCreateUser = async (values: any) => {
     try {
-      setSubmitting(true);
+      setCreateSubmitting(true);
+      const firstName = (values.first_name || '').trim();
+      const lastName = (values.last_name || '').trim();
+      const fullName = `${firstName} ${lastName}`.trim();
+
       await dataService.createStaffUser({
-        email: values.email,
-        full_name: values.full_name,
+        email: values.email.trim().toLowerCase(),
+        first_name: firstName,
+        last_name: lastName,
+        full_name: fullName,
         role: values.role,
         password: values.password,
       });
 
-      message.success(`Usuario "${values.full_name}" creado con éxito.`);
-      setModalOpen(false);
-      form.resetFields();
-      fetchUsers();
+      message.success(`Usuario "${fullName}" creado exitosamente.`);
+      setCreateModalOpen(false);
+      createForm.resetFields();
+      await fetchUsers();
     } catch (err: any) {
       message.error(err.message || 'Error al crear el usuario');
     } finally {
-      setSubmitting(false);
+      setCreateSubmitting(false);
+    }
+  };
+
+  // Abrir modal de edición
+  const handleOpenEdit = (user: StaffUser) => {
+    setEditingUser(user);
+    const parsed = parseUserNames(user);
+    editForm.setFieldsValue({
+      first_name: parsed.firstName,
+      last_name: parsed.lastName,
+      role: user.role,
+      is_active: user.is_active,
+    });
+    setEditModalOpen(true);
+  };
+
+  // Guardar edición de Nombres y Apellidos
+  const handleSaveEdit = async (values: any) => {
+    if (!editingUser) return;
+    try {
+      setEditSubmitting(true);
+      const firstName = (values.first_name || '').trim();
+      const lastName = (values.last_name || '').trim();
+      const fullName = `${firstName} ${lastName}`.trim();
+
+      await dataService.updateStaffUser(editingUser.id, {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: fullName,
+        role: values.role,
+        is_active: values.is_active,
+      });
+
+      // Si el usuario editado es el mismo de la sesión actual, actualizar localStorage
+      if (
+        currentUser?.email &&
+        editingUser.email.toLowerCase() === currentUser.email.toLowerCase()
+      ) {
+        const local = localStorage.getItem('tiendita_current_staff');
+        if (local) {
+          try {
+            const parsed = JSON.parse(local);
+            parsed.name = fullName;
+            parsed.role = values.role;
+            localStorage.setItem('tiendita_current_staff', JSON.stringify(parsed));
+          } catch {}
+        }
+      }
+
+      message.success(`Datos de "${fullName}" actualizados correctamente.`);
+      setEditModalOpen(false);
+      setEditingUser(null);
+      await fetchUsers();
+    } catch (err: any) {
+      message.error(err.message || 'Error actualizando usuario');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -156,7 +254,7 @@ export default function AdminUsersPage() {
           <Result
             status="403"
             title="Acceso Restringido"
-            subTitle="Esta sección está reservada exclusivamente para el Administrador del sistema. Los despachadores tienen acceso a la atención, registro y cobro de pedidos."
+            subTitle="Esta sección está reservada exclusivamente para el Administrador del sistema. Los despachadores tienen acceso a la atención y cobro de pedidos."
             extra={
               <Link href="/admin">
                 <Button type="primary" style={{ background: '#0d9488' }} icon={<ArrowLeftOutlined />}>
@@ -172,20 +270,47 @@ export default function AdminUsersPage() {
 
   const columns = [
     {
-      title: 'Nombre Completo',
-      dataIndex: 'full_name',
+      title: 'Personal (Nombres y Apellidos)',
       key: 'full_name',
-      render: (name: string, record: StaffUser) => (
-        <Space direction="vertical" size={1}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>
-            {name}
-            {record.email === currentUser?.email && (
-              <Tag color="blue" style={{ marginLeft: 6, fontSize: 11 }}>Tú</Tag>
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>{record.email}</div>
-        </Space>
-      ),
+      render: (_: any, record: StaffUser) => {
+        const parsed = parseUserNames(record);
+        const initials =
+          `${parsed.firstName[0] || ''}${parsed.lastName[0] || ''}`.toUpperCase() || 'U';
+
+        return (
+          <Space align="center" size={12}>
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: record.role === 'admin' ? '#fef3c7' : '#ccfbf1',
+                color: record.role === 'admin' ? '#d97706' : '#0d9488',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 700,
+                fontSize: 14,
+                flexShrink: 0,
+                border: '1px solid rgba(0,0,0,0.06)',
+              }}
+            >
+              {initials}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>{parsed.fullName}</span>
+                {record.email === currentUser?.email && (
+                  <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 6px' }}>
+                    Tú
+                  </Tag>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{record.email}</div>
+            </div>
+          </Space>
+        );
+      },
     },
     {
       title: 'Rol Asignado',
@@ -195,7 +320,7 @@ export default function AdminUsersPage() {
         <Select
           value={role}
           size="small"
-          style={{ width: 150 }}
+          style={{ width: 155 }}
           onChange={(newRole) => handleChangeRole(record, newRole)}
           options={[
             {
@@ -224,8 +349,8 @@ export default function AdminUsersPage() {
       render: (_: any, record: StaffUser) => (
         <span style={{ fontSize: 12, color: '#64748b' }}>
           {record.role === 'admin'
-            ? 'Total: Gestión usuarios, inventario, precios y despacho'
-            : 'Despacho: Tomar pedidos, cobrar en caja, anular'}
+            ? 'Total: Gestión de personal, catálogo, precios y caja'
+            : 'Despacho: Toma de pedidos, cobro en caja y anulación'}
         </span>
       ),
     },
@@ -247,10 +372,25 @@ export default function AdminUsersPage() {
       ),
     },
     {
-      title: 'Fecha de Registro',
+      title: 'Registro',
       dataIndex: 'created_at',
       key: 'created_at',
-      render: (date?: string) => formatDateTime(date),
+      render: (date?: string) => (
+        <span style={{ fontSize: 12, color: '#64748b' }}>{formatDateTime(date)}</span>
+      ),
+    },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      render: (_: any, record: StaffUser) => (
+        <Button
+          icon={<EditOutlined />}
+          size="small"
+          onClick={() => handleOpenEdit(record)}
+        >
+          Editar
+        </Button>
+      ),
     },
   ];
 
@@ -259,13 +399,23 @@ export default function AdminUsersPage() {
       <Navbar />
 
       <main className="main-container">
-        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div
+          className="page-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 20,
+          }}
+        >
           <div>
             <Title level={2} style={{ margin: 0 }}>
               Control Interno de Usuarios & Personal
             </Title>
             <Text type="secondary">
-              Crea y administra cuentas internas para administradores y despachadores directamente desde aquí.
+              Gestiona el personal con sus <strong>Nombres y Apellidos</strong> correspondientes para atención en caja, despacho y balance.
             </Text>
           </div>
 
@@ -277,7 +427,7 @@ export default function AdminUsersPage() {
               type="primary"
               style={{ background: '#0d9488' }}
               icon={<UserAddOutlined />}
-              onClick={() => setModalOpen(true)}
+              onClick={() => setCreateModalOpen(true)}
             >
               Nuevo Usuario
             </Button>
@@ -292,7 +442,7 @@ export default function AdminUsersPage() {
                 🛡️ Rol Administrador
               </div>
               <div style={{ fontSize: 13, color: '#78350f' }}>
-                Acceso completo al sistema: alta y baja de personal, edición de catálogo, modificación de precios, ajuste de inventario y monitoreo financiero de caja.
+                Acceso completo al sistema: alta y edición de personal, catálogo, modificación de precios, inventario y monitoreo financiero de caja.
               </div>
             </Card>
           </Col>
@@ -302,7 +452,7 @@ export default function AdminUsersPage() {
                 📦 Rol Despachador
               </div>
               <div style={{ fontSize: 13, color: '#134e4a' }}>
-                Enfocado en la atención mostrador: tomar pedidos presenciales, cobrar con diferentes medios de pago (efectivo con vuelto), despachar y anular órdenes.
+                Enfocado en atención mostrador: tomar pedidos presenciales, cobrar con diferentes métodos de pago, despachar órdenes y realizar corte de turno.
               </div>
             </Card>
           </Col>
@@ -319,36 +469,55 @@ export default function AdminUsersPage() {
         </Card>
       </main>
 
-      {/* Modal para Crear Usuario */}
+      {/* =================================================================== */}
+      {/* MODAL 1: CREAR NUEVO USUARIO (Nombres y Apellidos separados)         */}
+      {/* =================================================================== */}
       <Modal
-        open={modalOpen}
+        open={createModalOpen}
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <UserAddOutlined style={{ color: '#0d9488' }} />
+            <UserAddOutlined style={{ color: '#0d9488', fontSize: 20 }} />
             <span>Crear Usuario Interno</span>
           </div>
         }
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => setCreateModalOpen(false)}
         footer={null}
         width={520}
       >
         <Form
-          form={form}
+          form={createForm}
           layout="vertical"
           onFinish={handleCreateUser}
           initialValues={{ role: 'despachador' }}
           style={{ marginTop: 16 }}
         >
-          <Form.Item
-            label="Nombre Completo del Personal:"
-            name="full_name"
-            rules={[{ required: true, message: 'Ingresa el nombre completo' }]}
-          >
-            <Input
-              prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
-              placeholder="Ej: Daniel Morales"
-            />
-          </Form.Item>
+          {/* Nombres y Apellidos separados */}
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label="Nombres:"
+                name="first_name"
+                rules={[{ required: true, message: 'Ingresa los nombres del usuario' }]}
+              >
+                <Input
+                  prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="Ej: Daniel Alejandro"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label="Apellidos:"
+                name="last_name"
+                rules={[{ required: true, message: 'Ingresa los apellidos del usuario' }]}
+              >
+                <Input
+                  prefix={<IdcardOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="Ej: Morales Santos"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
 
           <Form.Item
             label="Correo Electrónico (Acceso):"
@@ -391,7 +560,7 @@ export default function AdminUsersPage() {
                 },
                 {
                   value: 'admin',
-                  label: '🛡️ Administrador (Acceso total, usuarios e inventario)',
+                  label: '🛡️ Administrador (Acceso total, personal e inventario)',
                 },
               ]}
             />
@@ -399,16 +568,113 @@ export default function AdminUsersPage() {
 
           <div style={{ textAlign: 'right', marginTop: 24 }}>
             <Space>
-              <Button onClick={() => setModalOpen(false)}>
+              <Button onClick={() => setCreateModalOpen(false)}>
                 Cancelar
               </Button>
               <Button
                 type="primary"
                 htmlType="submit"
-                loading={submitting}
+                loading={createSubmitting}
                 style={{ background: '#0d9488' }}
               >
-                Crear y Guardar Usuario
+                Guardar Usuario
+              </Button>
+            </Space>
+          </div>
+        </Form>
+      </Modal>
+
+      {/* =================================================================== */}
+      {/* MODAL 2: EDITAR NOMBRES Y APELLIDOS DEL PERSONAL                     */}
+      {/* =================================================================== */}
+      <Modal
+        open={editModalOpen}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <EditOutlined style={{ color: '#0d9488', fontSize: 20 }} />
+            <span>Editar Datos de Personal: {editingUser?.email}</span>
+          </div>
+        }
+        onCancel={() => setEditModalOpen(false)}
+        footer={null}
+        width={520}
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={handleSaveEdit}
+          style={{ marginTop: 16 }}
+        >
+          {/* Nombres y Apellidos */}
+          <Row gutter={12}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label="Nombres:"
+                name="first_name"
+                rules={[{ required: true, message: 'Ingresa los nombres' }]}
+              >
+                <Input
+                  prefix={<UserOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="Ej: Daniel Alejandro"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label="Apellidos:"
+                name="last_name"
+                rules={[{ required: true, message: 'Ingresa los apellidos' }]}
+              >
+                <Input
+                  prefix={<IdcardOutlined style={{ color: '#94a3b8' }} />}
+                  placeholder="Ej: Morales Santos"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="Rol del Usuario:"
+            name="role"
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                {
+                  value: 'despachador',
+                  label: '📦 Despachador (Toma pedidos, cobra y despacha)',
+                },
+                {
+                  value: 'admin',
+                  label: '🛡️ Administrador (Acceso total)',
+                },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="Estado de la Cuenta:"
+            name="is_active"
+            valuePropName="checked"
+          >
+            <Switch
+              checkedChildren="Cuenta Activa"
+              unCheckedChildren="Desactivada"
+            />
+          </Form.Item>
+
+          <div style={{ textAlign: 'right', marginTop: 24 }}>
+            <Space>
+              <Button onClick={() => setEditModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={editSubmitting}
+                style={{ background: '#0d9488' }}
+              >
+                Guardar Cambios
               </Button>
             </Space>
           </div>
@@ -417,4 +683,3 @@ export default function AdminUsersPage() {
     </div>
   );
 }
-

@@ -154,9 +154,15 @@ export default function AdminBalancePage() {
         if (match) {
           setUserRole(match.role);
           setCutTargetUser(match.full_name);
+          setCurrentUser((prev: any) => ({
+            ...prev,
+            id: match.auth_user_id || match.id || prev?.id,
+            name: match.full_name,
+            role: match.role,
+          }));
         } else if (email.toLowerCase().includes('admin')) {
           setUserRole('admin');
-          setCutTargetUser(email.split('@')[0]);
+          setCutTargetUser('Administrador Principal');
         }
       } catch {
         // fallback
@@ -345,7 +351,7 @@ export default function AdminBalancePage() {
 
   // 6. Información del turno no cerrado para el usuario seleccionado en el corte
   const targetUserUnclosedOrders = useMemo(() => {
-    const target = cutTargetUser || currentUser?.name || currentUser?.email?.split('@')[0] || '';
+    const target = cutTargetUser || currentUser?.name || '';
     return orders.filter((o) => {
       const matchName = o.dispatched_by_name?.toLowerCase() === target.toLowerCase();
       const matchId = currentUser?.id && o.dispatched_by_id === currentUser.id;
@@ -382,7 +388,7 @@ export default function AdminBalancePage() {
 
   // Abrir modal de corte
   const handleOpenCutModal = (userName?: string) => {
-    const userToCut = userName || currentUser?.name || currentUser?.email?.split('@')[0] || '';
+    const userToCut = userName || cutTargetUser || currentUser?.name || 'Personal de Tienda';
     setCutTargetUser(userToCut);
     setCountedCash(null);
     setCutNotes('');

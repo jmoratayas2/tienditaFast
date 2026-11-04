@@ -85,9 +85,10 @@ export default function AdminDashboardPage() {
           router.push('/admin/login');
           return;
         } else {
+          const metaName = data.user.user_metadata?.full_name;
           setCurrentUser({
             id: data.user.id,
-            name: data.user.email?.split('@')[0] || 'Despachador',
+            name: metaName || 'Personal de Tienda',
             email: data.user.email,
           });
           email = data.user.email || '';
@@ -109,12 +110,18 @@ export default function AdminDashboardPage() {
         }
       }
 
-      // Validar rol desde la lista de personal
+      // Validar rol y Nombres y Apellidos desde la lista de personal
       try {
         const staffList = await dataService.getStaffUsers();
         const profile = staffList.find((s) => s.email.toLowerCase() === email.toLowerCase());
         if (profile) {
           setUserRole(profile.role);
+          setCurrentUser((prev: any) => ({
+            ...prev,
+            id: profile.auth_user_id || profile.id || prev?.id,
+            name: profile.full_name,
+            role: profile.role,
+          }));
         } else if (email.toLowerCase().includes('admin')) {
           setUserRole('admin');
         } else {

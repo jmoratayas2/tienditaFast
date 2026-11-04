@@ -206,9 +206,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               Datos de Retiro en Mostrador
             </Title>
             <Form layout="vertical" size="small">
-              <Form.Item label="Tu Nombre (o apodo para llamarte):">
+              <Form.Item label="Nombres y Apellidos del Cliente:">
                 <Input
-                  placeholder="Ej: Carlos Mora (Opcional)"
+                  placeholder="Ej: Carlos Mora (Para llamarte al retirar)"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />

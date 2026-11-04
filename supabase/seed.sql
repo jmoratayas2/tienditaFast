@@ -139,11 +139,13 @@ ON CONFLICT DO NOTHING;
 -- ==============================================================================
 -- USUARIOS DE PERSONAL INICIALES (CONTROL INTERNO)
 -- ==============================================================================
-INSERT INTO public.staff_users (email, full_name, role, is_active)
+INSERT INTO public.staff_users (email, first_name, last_name, full_name, role, is_active)
 VALUES
-    ('admin@tiendita.com', 'Administrador Principal', 'admin', true),
-    ('despacho@tiendita.com', 'Carlos Mora (Despachador)', 'despachador', true),
-    ('ana@tiendita.com', 'Ana Gómez (Cajera)', 'despachador', true)
+    ('admin@tiendita.com', 'Administrador', 'Principal', 'Administrador Principal', 'admin', true),
+    ('despacho@tiendita.com', 'Carlos', 'Mora', 'Carlos Mora', 'despachador', true),
+    ('ana@tiendita.com', 'Ana', 'Gómez', 'Ana Gómez', 'despachador', true)
 ON CONFLICT (email) DO UPDATE
-SET full_name = EXCLUDED.full_name,
+SET first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    full_name = EXCLUDED.full_name,
     role = EXCLUDED.role;

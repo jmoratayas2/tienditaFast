@@ -68,11 +68,16 @@ CREATE TABLE IF NOT EXISTS public.staff_users (
     auth_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
     full_name TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
     role TEXT NOT NULL DEFAULT 'despachador' CHECK (role IN ('admin', 'despachador')),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.staff_users ADD COLUMN IF NOT EXISTS first_name TEXT;
+ALTER TABLE public.staff_users ADD COLUMN IF NOT EXISTS last_name TEXT;
 
 -- 6. Tabla de Configuración del Portal de Clientes
 CREATE TABLE IF NOT EXISTS public.store_settings (
@@ -176,17 +181,36 @@ END $$;
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.handle_new_staff_user()
 RETURNS trigger AS $$
+DECLARE
+  v_first TEXT := NULLIF(TRIM(COALESCE(new.raw_user_meta_data->>'first_name', '')), '');
+  v_last TEXT := NULLIF(TRIM(COALESCE(new.raw_user_meta_data->>'last_name', '')), '');
+  v_full TEXT := NULLIF(TRIM(COALESCE(new.raw_user_meta_data->>'full_name', '')), '');
 BEGIN
-  INSERT INTO public.staff_users (auth_user_id, email, full_name, role)
+  IF v_full IS NULL AND (v_first IS NOT NULL OR v_last IS NOT NULL) THEN
+    v_full := TRIM(COALESCE(v_first, '') || ' ' || COALESCE(v_last, ''));
+  END IF;
+
+  IF v_full IS NULL THEN
+    v_full := 'Personal de Tienda';
+  END IF;
+
+  INSERT INTO public.staff_users (auth_user_id, email, first_name, last_name, full_name, role)
   VALUES (
     new.id,
     new.email,
-    COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
+    v_first,
+    v_last,
+    v_full,
     COALESCE(new.raw_user_meta_data->>'role', 'despachador')
   )
   ON CONFLICT (email) DO UPDATE
   SET auth_user_id = new.id,
-      full_name = COALESCE(new.raw_user_meta_data->>'full_name', public.staff_users.full_name),
+      first_name = COALESCE(EXCLUDED.first_name, public.staff_users.first_name),
+      last_name = COALESCE(EXCLUDED.last_name, public.staff_users.last_name),
+      full_name = CASE 
+                    WHEN EXCLUDED.full_name <> 'Personal de Tienda' THEN EXCLUDED.full_name 
+                    ELSE public.staff_users.full_name 
+                  END,
       role = COALESCE(new.raw_user_meta_data->>'role', public.staff_users.role);
   RETURN new;
 END;

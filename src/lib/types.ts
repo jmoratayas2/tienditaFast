@@ -9,6 +9,8 @@ export interface StaffUser {
   auth_user_id?: string | null;
   email: string;
   full_name: string;
+  first_name?: string;
+  last_name?: string;
   role: UserRole;
   is_active: boolean;
   created_at?: string;
