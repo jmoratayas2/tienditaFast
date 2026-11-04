@@ -34,6 +34,7 @@ export interface Product {
   image_url: string | null;
   is_active: boolean;
   is_featured?: boolean;
+  barcode?: string | null;
   available_all_day?: boolean;
   available_from?: string; // Formato HH:mm, ej: "06:00"
   available_to?: string;   // Formato HH:mm, ej: "11:30"
@@ -84,6 +85,28 @@ export interface Order {
   payment_status: 'unpaid' | 'paid' | 'refunded';
   payment_details: PaymentItem[];
   order_items?: OrderItem[];
+  shift_cut_id?: string | null;
+}
+
+export interface ShiftCut {
+  id: string;
+  cut_number: string;
+  user_id?: string | null;
+  user_name: string;
+  user_role?: UserRole;
+  started_at: string;
+  closed_at: string;
+  orders_count: number;
+  total_sales: number;
+  cash_expected: number;
+  cash_counted?: number | null;
+  cash_difference?: number | null;
+  card_total: number;
+  transfer_total: number;
+  other_total: number;
+  notes?: string | null;
+  status: 'closed';
+  created_at?: string;
 }
 
 export interface CartItem {

@@ -1,5 +1,5 @@
 import { createClientBrowser, isSupabaseConfigured } from './supabase/client';
-import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole, StoreSettings } from './types';
+import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole, StoreSettings, ShiftCut } from './types';
 import { INITIAL_PRODUCTS, DEFAULT_STORE_SETTINGS } from './mockData';
 
 const MOCK_PRODUCTS_KEY = 'tiendita_products_gtq';
@@ -7,6 +7,7 @@ const MOCK_ORDERS_KEY = 'tiendita_orders';
 const MOCK_ORDER_SEQ_KEY = 'tiendita_order_seq';
 const MOCK_STAFF_KEY = 'tiendita_staff_users';
 const MOCK_SETTINGS_KEY = 'tiendita_store_settings';
+const MOCK_CUTS_KEY = 'tiendita_shift_cuts';
 
 const INITIAL_STAFF_USERS: StaffUser[] = [
   {
@@ -119,6 +120,24 @@ const getLocalSettings = (): StoreSettings => {
 const saveLocalSettings = (settings: StoreSettings) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(MOCK_SETTINGS_KEY, JSON.stringify(settings));
+    window.dispatchEvent(new Event('tiendita_storage_updated'));
+  }
+};
+
+const getLocalCuts = (): ShiftCut[] => {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(MOCK_CUTS_KEY);
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored);
+  } catch {
+    return [];
+  }
+};
+
+const saveLocalCuts = (cuts: ShiftCut[]) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(MOCK_CUTS_KEY, JSON.stringify(cuts));
     window.dispatchEvent(new Event('tiendita_storage_updated'));
   }
 };
@@ -395,15 +414,66 @@ export const dataService = {
     return true;
   },
 
-  // Despachar pedido con desglose de formas de pago y cálculo de vuelto
+  // Despachar pedido con desglose de formas de pago, ajuste de productos en mostrador y cálculo de vuelto
   async dispatchOrder(
     orderId: string,
     dispatcher: { id?: string; name: string },
     payments: PaymentItem[],
-    notes?: string
+    notes?: string,
+    updatedItems?: OrderItem[]
   ): Promise<boolean> {
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
+
+      // Si se modificaron o agregaron productos al momento del despacho
+      if (updatedItems && updatedItems.length > 0) {
+        try {
+          const { data: prevItems } = await supabase
+            .from('order_items')
+            .select('*')
+            .eq('order_id', orderId);
+
+          const prevMap = new Map<string, number>();
+          (prevItems || []).forEach((pi: any) => {
+            prevMap.set(pi.product_id, (prevMap.get(pi.product_id) || 0) + pi.quantity);
+          });
+
+          const newMap = new Map<string, number>();
+          updatedItems.forEach((ui) => {
+            newMap.set(ui.product_id, (newMap.get(ui.product_id) || 0) + ui.quantity);
+          });
+
+          const allProdIds = Array.from(new Set([...Array.from(prevMap.keys()), ...Array.from(newMap.keys())]));
+          for (const pId of allProdIds) {
+            const oldQty = prevMap.get(pId) || 0;
+            const newQty = newMap.get(pId) || 0;
+            const diff = newQty - oldQty;
+            if (diff !== 0) {
+              const { data: pData } = await supabase.from('products').select('stock').eq('id', pId).single();
+              if (pData) {
+                await supabase.from('products').update({ stock: Math.max(0, pData.stock - diff) }).eq('id', pId);
+              }
+            }
+          }
+
+          await supabase.from('order_items').delete().eq('order_id', orderId);
+          const insertPayload = updatedItems.map((ui) => ({
+            order_id: orderId,
+            product_id: ui.product_id,
+            product_name: ui.product_name,
+            unit_price: ui.unit_price,
+            quantity: ui.quantity,
+            subtotal: ui.unit_price * ui.quantity,
+          }));
+          await supabase.from('order_items').insert(insertPayload);
+
+          const newTotal = updatedItems.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
+          await supabase.from('orders').update({ total_amount: newTotal }).eq('id', orderId);
+        } catch (itemErr) {
+          console.error('Error actualizando items en despacho:', itemErr);
+        }
+      }
+
       const { data, error } = await supabase.rpc('dispatch_order', {
         p_order_id: orderId,
         p_user_id: dispatcher.id || null,
@@ -432,6 +502,32 @@ export const dataService = {
     if (now > expiresAt) {
       await this.expireOrders();
       throw new Error('El tiempo límite para retirar este pedido ya expiró.');
+    }
+
+    // Ajuste de productos en localStorage
+    if (updatedItems && updatedItems.length > 0) {
+      const localProducts = getLocalProducts();
+      const prevItems = order.order_items || [];
+      const prevMap = new Map<string, number>();
+      prevItems.forEach((pi) => prevMap.set(pi.product_id, (prevMap.get(pi.product_id) || 0) + pi.quantity));
+
+      const newMap = new Map<string, number>();
+      updatedItems.forEach((ui) => newMap.set(ui.product_id, (newMap.get(ui.product_id) || 0) + ui.quantity));
+
+      const allProdIds = Array.from(new Set([...Array.from(prevMap.keys()), ...Array.from(newMap.keys())]));
+      allProdIds.forEach((pId) => {
+        const oldQty = prevMap.get(pId) || 0;
+        const newQty = newMap.get(pId) || 0;
+        const diff = newQty - oldQty;
+        const pIndex = localProducts.findIndex((p) => p.id === pId);
+        if (pIndex !== -1 && diff !== 0) {
+          localProducts[pIndex].stock = Math.max(0, localProducts[pIndex].stock - diff);
+        }
+      });
+      saveLocalProducts(localProducts);
+
+      orders[orderIndex].order_items = updatedItems;
+      orders[orderIndex].total_amount = updatedItems.reduce((acc, i) => acc + i.unit_price * i.quantity, 0);
     }
 
     orders[orderIndex].status = 'dispatched';
@@ -669,5 +765,151 @@ export const dataService = {
     staff[index] = { ...staff[index], ...updates };
     saveLocalStaff(staff);
     return true;
+  },
+
+  // Obtener historial de cortes de caja registrados
+  async getShiftCuts(): Promise<ShiftCut[]> {
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      const { data, error } = await supabase
+        .from('shift_cuts')
+        .select('*')
+        .order('closed_at', { ascending: false });
+      if (!error && data) {
+        return data as ShiftCut[];
+      }
+    }
+    const cuts = getLocalCuts();
+    return cuts.sort((a, b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime());
+  },
+
+  // Registrar un corte de caja / cierre de turno por usuario
+  async registerShiftCut(payload: {
+    userId?: string | null;
+    userName: string;
+    userRole?: UserRole;
+    cashCounted?: number | null;
+    notes?: string | null;
+  }): Promise<ShiftCut> {
+    const orders = await this.getOrders('dispatched');
+    // Filtrar pedidos despachados por este usuario que aún no pertenezcan a un corte cerrado
+    const unclosedOrders = orders.filter((o) => {
+      const matchName = o.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
+      const matchId = payload.userId && o.dispatched_by_id === payload.userId;
+      return (matchName || matchId) && !o.shift_cut_id;
+    });
+
+    let totalSales = 0;
+    let cashExpected = 0;
+    let cardTotal = 0;
+    let transferTotal = 0;
+    let otherTotal = 0;
+
+    unclosedOrders.forEach((o) => {
+      totalSales += o.total_amount;
+      (o.payment_details || []).forEach((p) => {
+        if (p.method === 'efectivo') {
+          cashExpected += p.amount;
+        } else if (p.method === 'tarjeta') {
+          cardTotal += p.amount;
+        } else if (p.method === 'transferencia' || p.method === 'sinpe') {
+          transferTotal += p.amount;
+        } else {
+          otherTotal += p.amount;
+        }
+      });
+    });
+
+    const cashDiff = payload.cashCounted !== null && payload.cashCounted !== undefined
+      ? payload.cashCounted - cashExpected
+      : null;
+
+    const startedAt = unclosedOrders.length > 0
+      ? unclosedOrders[unclosedOrders.length - 1].dispatched_at || unclosedOrders[unclosedOrders.length - 1].created_at
+      : new Date().toISOString();
+
+    const closedAt = new Date().toISOString();
+
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      const { count } = await supabase.from('shift_cuts').select('*', { count: 'exact', head: true });
+      const cutSeq = (count || 0) + 1;
+      const cutNumber = `CORTE-${cutSeq.toString().padStart(3, '0')}`;
+
+      const { data: newCut, error } = await supabase
+        .from('shift_cuts')
+        .insert({
+          cut_number: cutNumber,
+          user_id: payload.userId || null,
+          user_name: payload.userName,
+          user_role: payload.userRole || 'despachador',
+          started_at: startedAt,
+          closed_at: closedAt,
+          orders_count: unclosedOrders.length,
+          total_sales: totalSales,
+          cash_expected: cashExpected,
+          cash_counted: payload.cashCounted ?? null,
+          cash_difference: cashDiff,
+          card_total: cardTotal,
+          transfer_total: transferTotal,
+          other_total: otherTotal,
+          notes: payload.notes || null,
+          status: 'closed',
+        })
+        .select()
+        .single();
+
+      if (!error && newCut) {
+        if (unclosedOrders.length > 0) {
+          const orderIds = unclosedOrders.map((o) => o.id);
+          await supabase
+            .from('orders')
+            .update({ shift_cut_id: newCut.id })
+            .in('id', orderIds);
+        }
+        return newCut as ShiftCut;
+      }
+    }
+
+    // LocalStorage Fallback
+    const localCuts = getLocalCuts();
+    const cutNumber = `CORTE-${(localCuts.length + 1).toString().padStart(3, '0')}`;
+    const cutId = 'cut-' + Date.now();
+
+    const createdCut: ShiftCut = {
+      id: cutId,
+      cut_number: cutNumber,
+      user_id: payload.userId,
+      user_name: payload.userName,
+      user_role: payload.userRole || 'despachador',
+      started_at: startedAt,
+      closed_at: closedAt,
+      orders_count: unclosedOrders.length,
+      total_sales: totalSales,
+      cash_expected: cashExpected,
+      cash_counted: payload.cashCounted ?? null,
+      cash_difference: cashDiff,
+      card_total: cardTotal,
+      transfer_total: transferTotal,
+      other_total: otherTotal,
+      notes: payload.notes || null,
+      status: 'closed',
+      created_at: closedAt,
+    };
+
+    localCuts.unshift(createdCut);
+    saveLocalCuts(localCuts);
+
+    const allLocalOrders = getLocalOrders();
+    allLocalOrders.forEach((lo) => {
+      const matchName = lo.dispatched_by_name?.toLowerCase() === payload.userName.toLowerCase();
+      const matchId = payload.userId && lo.dispatched_by_id === payload.userId;
+      if (lo.status === 'dispatched' && !lo.shift_cut_id && (matchName || matchId)) {
+        lo.shift_cut_id = cutId;
+      }
+    });
+    saveLocalOrders(allLocalOrders);
+
+    return createdCut;
   },
 };

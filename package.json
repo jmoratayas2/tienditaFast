@@ -16,6 +16,7 @@
     "antd": "^5.24.4",
     "canvas-confetti": "^1.9.4",
     "dayjs": "^1.11.13",
+    "html5-qrcode": "^2.3.8",
     "next": "^15.1.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

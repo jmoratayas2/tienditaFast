@@ -26,6 +26,7 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_all_day BOOLEAN DEFAULT true;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_from TEXT DEFAULT '00:00';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_to TEXT DEFAULT '23:59';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS barcode TEXT;
 
 -- 2. Secuencia para número de pedido legible (ej: PED-1001)
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 1001;
@@ -103,12 +104,39 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
+-- 7. Tabla de Cortes de Caja / Cierres de Turno
+CREATE TABLE IF NOT EXISTS public.shift_cuts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    cut_number TEXT NOT NULL,
+    user_id UUID,
+    user_name TEXT NOT NULL,
+    user_role TEXT DEFAULT 'despachador',
+    started_at TIMESTAMPTZ NOT NULL,
+    closed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    orders_count INTEGER NOT NULL DEFAULT 0,
+    total_sales NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    cash_expected NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    cash_counted NUMERIC(10, 2),
+    cash_difference NUMERIC(10, 2),
+    card_total NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    transfer_total NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    other_total NUMERIC(10, 2) NOT NULL DEFAULT 0,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'closed',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS shift_cut_id UUID REFERENCES public.shift_cuts(id) ON DELETE SET NULL;
+
 -- Índices para optimizar consultas frecuentes
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_expires_at ON public.orders(expires_at);
+CREATE INDEX IF NOT EXISTS idx_orders_shift_cut ON public.orders(shift_cut_id);
+CREATE INDEX IF NOT EXISTS idx_shift_cuts_user ON public.shift_cuts(user_name);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON public.order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
 CREATE INDEX IF NOT EXISTS idx_products_featured ON public.products(is_featured);
+CREATE INDEX IF NOT EXISTS idx_products_barcode ON public.products(barcode);
 CREATE INDEX IF NOT EXISTS idx_staff_users_email ON public.staff_users(email);
 CREATE INDEX IF NOT EXISTS idx_staff_users_role ON public.staff_users(role);
 
@@ -429,6 +457,7 @@ ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_cuts ENABLE ROW LEVEL SECURITY;
 
 -- Productos:
 CREATE POLICY "Productos visibles para todos" 
@@ -480,5 +509,15 @@ USING (true);
 
 CREATE POLICY "Personal modifica configuracion del portal"
 ON public.store_settings FOR ALL
+USING (true)
+WITH CHECK (true);
+
+-- Cortes de Caja / Cierres de Turno:
+CREATE POLICY "Lectura de cortes de caja"
+ON public.shift_cuts FOR SELECT
+USING (true);
+
+CREATE POLICY "Gestión de cortes de caja"
+ON public.shift_cuts FOR ALL
 USING (true)
 WITH CHECK (true);

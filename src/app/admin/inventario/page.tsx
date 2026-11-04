@@ -35,6 +35,7 @@ import {
   StarOutlined,
   EditOutlined,
   SettingOutlined,
+  ScanOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { Product, UserRole } from '@/lib/types';
@@ -160,6 +161,7 @@ export default function AdminInventoryPage() {
     setAvailableAllDayEdit(product.available_all_day !== false);
     editForm.setFieldsValue({
       name: product.name,
+      barcode: product.barcode || '',
       description: product.description,
       category: product.category,
       price: product.price,
@@ -179,6 +181,7 @@ export default function AdminInventoryPage() {
       setSubmitting(true);
       await dataService.updateProduct(editProduct.id, {
         name: values.name,
+        barcode: values.barcode || null,
         description: values.description || null,
         category: values.category,
         price: values.price,
@@ -210,6 +213,7 @@ export default function AdminInventoryPage() {
       setSubmitting(true);
       await dataService.addProduct({
         name: values.name,
+        barcode: values.barcode || null,
         description: values.description || null,
         price: values.price,
         stock: values.stock,
@@ -273,7 +277,14 @@ export default function AdminInventoryPage() {
               </Tag>
             )}
           </div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>{record.description}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>{record.description}</span>
+            {record.barcode && (
+              <Tag color="geekblue" style={{ fontSize: 10, margin: 0 }}>
+                📷 {record.barcode}
+              </Tag>
+            )}
+          </div>
         </div>
       ),
     },
@@ -499,6 +510,10 @@ export default function AdminInventoryPage() {
             </Col>
           </Row>
 
+          <Form.Item label="Código de Barras / SKU (para escáner de cámara):" name="barcode">
+            <Input placeholder="Ej: 7401001 o escanea código EAN..." prefix={<ScanOutlined style={{ color: '#0d9488' }} />} />
+          </Form.Item>
+
           <Form.Item label="URL de Imagen:" name="image_url">
             <Input placeholder="https://..." />
           </Form.Item>
@@ -635,6 +650,10 @@ export default function AdminInventoryPage() {
               </Form.Item>
             </Col>
           </Row>
+
+          <Form.Item label="Código de Barras / SKU (para escáner de cámara):" name="barcode">
+            <Input placeholder="Ej: 7401001 o escanea código EAN..." prefix={<ScanOutlined style={{ color: '#0d9488' }} />} />
+          </Form.Item>
 
           <Form.Item label="URL de Imagen:" name="image_url">
             <Input placeholder="https://..." />

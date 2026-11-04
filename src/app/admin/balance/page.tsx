@@ -21,6 +21,9 @@ import {
   Empty,
   Tooltip,
   Alert,
+  Tabs,
+  InputNumber,
+  Input,
   message,
 } from 'antd';
 import {
@@ -36,10 +39,13 @@ import {
   ArrowLeftOutlined,
   CalendarOutlined,
   FileTextOutlined,
+  AuditOutlined,
+  FieldTimeOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { Navbar } from '@/components/Navbar';
-import { Order, StaffUser, UserRole, PaymentItem } from '@/lib/types';
+import { Order, StaffUser, UserRole, PaymentItem, ShiftCut } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import { formatCurrency, formatDateTime } from '@/lib/formatters';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
@@ -69,22 +75,45 @@ interface UserSalesSummary {
 export default function AdminBalancePage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [shiftCuts, setShiftCuts] = useState<ShiftCut[]>([]);
   const [staffUsers, setStaffUsers] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userRole, setUserRole] = useState<UserRole>('despachador');
 
   // Filtros
+  const [activeTab, setActiveTab] = useState<'open_shift' | 'cuts_history'>('open_shift');
   const [datePreset, setDatePreset] = useState<DatePreset>('today');
   const [customRange, setCustomRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('all');
 
-  // Modal de Detalle / Arqueo
+  // Modal de Detalle
   const [detailUser, setDetailUser] = useState<UserSalesSummary | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
-  // Arqueo a imprimir
-  const [printUser, setPrintUser] = useState<UserSalesSummary | null>(null);
+  // Modal para Realizar Corte de Turno
+  const [cutModalOpen, setCutModalOpen] = useState(false);
+  const [cutTargetUser, setCutTargetUser] = useState<string>('');
+  const [countedCash, setCountedCash] = useState<number | null>(null);
+  const [cutNotes, setCutNotes] = useState<string>('');
+  const [submittingCut, setSubmittingCut] = useState(false);
+
+  // Arqueo a imprimir (objeto temporal para el ticket de impresión)
+  const [printCut, setPrintCut] = useState<{
+    cutNumber: string;
+    userName: string;
+    startedAt: string;
+    closedAt: string;
+    ordersCount: number;
+    cashExpected: number;
+    cashCounted?: number | null;
+    cashDifference?: number | null;
+    cardTotal: number;
+    transferTotal: number;
+    otherTotal: number;
+    totalSales: number;
+    notes?: string | null;
+  } | null>(null);
 
   const isConnected = isSupabaseConfigured();
 
@@ -124,8 +153,10 @@ export default function AdminBalancePage() {
         const match = staffList.find((s) => s.email.toLowerCase() === email.toLowerCase());
         if (match) {
           setUserRole(match.role);
+          setCutTargetUser(match.full_name);
         } else if (email.toLowerCase().includes('admin')) {
           setUserRole('admin');
+          setCutTargetUser(email.split('@')[0]);
         }
       } catch {
         // fallback
@@ -135,15 +166,17 @@ export default function AdminBalancePage() {
     initAuth();
   }, [isConnected, router]);
 
-  // 2. Cargar pedidos
+  // 2. Cargar pedidos y cortes de caja
   const loadData = async () => {
     try {
       setLoading(true);
-      const [allOrders, staff] = await Promise.all([
+      const [allOrders, cuts, staff] = await Promise.all([
         dataService.getOrders('all'),
+        dataService.getShiftCuts(),
         dataService.getStaffUsers(),
       ]);
       setOrders(allOrders);
+      setShiftCuts(cuts);
       setStaffUsers(staff);
     } catch (err: any) {
       message.error(err.message || 'Error al cargar los datos');
@@ -156,14 +189,13 @@ export default function AdminBalancePage() {
     loadData();
   }, []);
 
-  // 3. Filtrar pedidos despachados por rango de fecha
+  // 3. Filtrar pedidos despachados según el filtro de fecha
   const filteredDispatchedOrders = useMemo(() => {
     const now = dayjs();
     const startOfToday = now.startOf('day');
     const endOfToday = now.endOf('day');
 
     return orders.filter((o) => {
-      // Solo pedidos efectivamente despachados y cobrados
       if (o.status !== 'dispatched') return false;
 
       const orderTime = dayjs(o.dispatched_at || o.created_at);
@@ -189,7 +221,6 @@ export default function AdminBalancePage() {
         const endCustom = customRange[1].endOf('day');
         return orderTime.isAfter(startCustom) && orderTime.isBefore(endCustom);
       }
-      // 'all'
       return true;
     });
   }, [orders, datePreset, customRange]);
@@ -198,7 +229,6 @@ export default function AdminBalancePage() {
   const usersSalesList: UserSalesSummary[] = useMemo(() => {
     const map = new Map<string, UserSalesSummary>();
 
-    // Inicializar mapa con el personal registrado para asegurar que todos aparezcan
     staffUsers.forEach((staff) => {
       const key = staff.full_name || staff.email;
       map.set(key, {
@@ -219,7 +249,6 @@ export default function AdminBalancePage() {
       });
     });
 
-    // Procesar cada orden despachada
     filteredDispatchedOrders.forEach((order) => {
       const dispatcherName = order.dispatched_by_name || 'Despachador en Turno';
       let entry = map.get(dispatcherName);
@@ -247,7 +276,6 @@ export default function AdminBalancePage() {
       entry.totalSales += order.total_amount;
       entry.orders.push(order);
 
-      // Desglose de métodos de pago
       if (order.payment_details && order.payment_details.length > 0) {
         order.payment_details.forEach((p) => {
           if (p.method === 'efectivo') {
@@ -263,7 +291,6 @@ export default function AdminBalancePage() {
           }
         });
       } else {
-        // Fallback: si no tenía desglose (legacy), se asume efectivo
         entry.cashAmount += order.total_amount;
         entry.cashReceived += order.total_amount;
       }
@@ -273,7 +300,6 @@ export default function AdminBalancePage() {
 
     const result = Array.from(map.values());
 
-    // Si hay filtro por usuario específico
     if (selectedUserFilter !== 'all') {
       return result.filter(
         (u) =>
@@ -282,11 +308,10 @@ export default function AdminBalancePage() {
       );
     }
 
-    // Ordenar por total vendido descendente
     return result.sort((a, b) => b.totalSales - a.totalSales);
   }, [filteredDispatchedOrders, staffUsers, selectedUserFilter]);
 
-  // 5. Totales generales del período seleccionado
+  // 5. Totales generales del período
   const grandTotals = useMemo(() => {
     let sales = 0;
     let count = 0;
@@ -318,7 +343,131 @@ export default function AdminBalancePage() {
     };
   }, [usersSalesList]);
 
-  // 6. Exportar a CSV
+  // 6. Información del turno no cerrado para el usuario seleccionado en el corte
+  const targetUserUnclosedOrders = useMemo(() => {
+    const target = cutTargetUser || currentUser?.name || currentUser?.email?.split('@')[0] || '';
+    return orders.filter((o) => {
+      const matchName = o.dispatched_by_name?.toLowerCase() === target.toLowerCase();
+      const matchId = currentUser?.id && o.dispatched_by_id === currentUser.id;
+      return o.status === 'dispatched' && !o.shift_cut_id && (matchName || matchId);
+    });
+  }, [orders, cutTargetUser, currentUser]);
+
+  const targetUserShiftSummary = useMemo(() => {
+    let sales = 0;
+    let cash = 0;
+    let card = 0;
+    let transfer = 0;
+
+    targetUserUnclosedOrders.forEach((o) => {
+      sales += o.total_amount;
+      (o.payment_details || []).forEach((p) => {
+        if (p.method === 'efectivo') cash += p.amount;
+        else if (p.method === 'tarjeta') card += p.amount;
+        else if (p.method === 'transferencia' || p.method === 'sinpe') transfer += p.amount;
+      });
+    });
+
+    const diff = countedCash !== null ? countedCash - cash : 0;
+
+    return {
+      sales,
+      cash,
+      card,
+      transfer,
+      count: targetUserUnclosedOrders.length,
+      diff,
+    };
+  }, [targetUserUnclosedOrders, countedCash]);
+
+  // Abrir modal de corte
+  const handleOpenCutModal = (userName?: string) => {
+    const userToCut = userName || currentUser?.name || currentUser?.email?.split('@')[0] || '';
+    setCutTargetUser(userToCut);
+    setCountedCash(null);
+    setCutNotes('');
+    setCutModalOpen(true);
+  };
+
+  // Confirmar y registrar el corte de caja
+  const handleConfirmShiftCut = async () => {
+    if (!cutTargetUser) {
+      message.warning('Selecciona el despachador para el corte.');
+      return;
+    }
+
+    if (targetUserUnclosedOrders.length === 0) {
+      message.warning(`El usuario ${cutTargetUser} no tiene pedidos pendientes de corte.`);
+      return;
+    }
+
+    try {
+      setSubmittingCut(true);
+      const staffMatch = staffUsers.find((s) => s.full_name.toLowerCase() === cutTargetUser.toLowerCase());
+
+      const createdCut = await dataService.registerShiftCut({
+        userId: staffMatch?.id || currentUser?.id || null,
+        userName: cutTargetUser,
+        userRole: staffMatch?.role || userRole,
+        cashCounted: countedCash,
+        notes: cutNotes || null,
+      });
+
+      message.success(`¡Corte ${createdCut.cut_number} registrado con éxito!`);
+      setCutModalOpen(false);
+
+      // Recargar datos y preparar impresión
+      await loadData();
+
+      setPrintCut({
+        cutNumber: createdCut.cut_number,
+        userName: createdCut.user_name,
+        startedAt: createdCut.started_at,
+        closedAt: createdCut.closed_at,
+        ordersCount: createdCut.orders_count,
+        cashExpected: createdCut.cash_expected,
+        cashCounted: createdCut.cash_counted,
+        cashDifference: createdCut.cash_difference,
+        cardTotal: createdCut.card_total,
+        transferTotal: createdCut.transfer_total,
+        otherTotal: createdCut.other_total,
+        totalSales: createdCut.total_sales,
+        notes: createdCut.notes,
+      });
+
+      setTimeout(() => {
+        window.print();
+      }, 300);
+    } catch (err: any) {
+      message.error(err.message || 'Error al registrar el corte de caja');
+    } finally {
+      setSubmittingCut(false);
+    }
+  };
+
+  // Imprimir un corte histórico ya registrado
+  const handleReprintHistoricalCut = (cut: ShiftCut) => {
+    setPrintCut({
+      cutNumber: cut.cut_number,
+      userName: cut.user_name,
+      startedAt: cut.started_at,
+      closedAt: cut.closed_at,
+      ordersCount: cut.orders_count,
+      cashExpected: cut.cash_expected,
+      cashCounted: cut.cash_counted,
+      cashDifference: cut.cash_difference,
+      cardTotal: cut.card_total,
+      transferTotal: cut.transfer_total,
+      otherTotal: cut.other_total,
+      totalSales: cut.total_sales,
+      notes: cut.notes,
+    });
+    setTimeout(() => {
+      window.print();
+    }, 200);
+  };
+
+  // Exportar a CSV
   const handleExportCSV = () => {
     if (filteredDispatchedOrders.length === 0) {
       message.warning('No hay ventas registradas en el período para exportar.');
@@ -335,20 +484,18 @@ export default function AdminBalancePage() {
       'Efectivo (Q)',
       'Tarjeta (Q)',
       'Transferencia (Q)',
-      'Metodos y Referencias',
+      'Corte ID',
     ];
 
     const rows = filteredDispatchedOrders.map((o) => {
       let cash = 0;
       let card = 0;
       let transfer = 0;
-      const refs: string[] = [];
 
       (o.payment_details || []).forEach((p) => {
         if (p.method === 'efectivo') cash += p.amount;
         if (p.method === 'tarjeta') card += p.amount;
         if (p.method === 'transferencia' || p.method === 'sinpe') transfer += p.amount;
-        if (p.reference) refs.push(`${p.method.toUpperCase()}: ${p.reference}`);
       });
 
       return [
@@ -361,7 +508,7 @@ export default function AdminBalancePage() {
         cash.toFixed(2),
         card.toFixed(2),
         transfer.toFixed(2),
-        `"${refs.join(' | ')}"`,
+        `"${o.shift_cut_id || 'Turno Abierto'}"`,
       ].join(',');
     });
 
@@ -369,23 +516,15 @@ export default function AdminBalancePage() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `balance_ventas_${datePreset}_${dayjs().format('YYYYMMDD_HHmm')}.csv`);
+    link.setAttribute('download', `balance_ventas_${dayjs().format('YYYYMMDD_HHmm')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     message.success('Reporte exportado exitosamente.');
   };
 
-  // 7. Imprimir corte de caja
-  const handlePrintCorte = (summary: UserSalesSummary) => {
-    setPrintUser(summary);
-    setTimeout(() => {
-      window.print();
-    }, 200);
-  };
-
-  // Columnas para la tabla principal
-  const columns = [
+  // Columnas para tabla de Ventas por Usuario (Turno Abierto)
+  const usersColumns = [
     {
       title: 'Despachador / Cajero',
       key: 'user',
@@ -500,13 +639,116 @@ export default function AdminBalancePage() {
 
           <Button
             size="small"
-            icon={<PrinterOutlined />}
-            onClick={() => handlePrintCorte(record)}
+            icon={<AuditOutlined />}
+            onClick={() => handleOpenCutModal(record.userName)}
             disabled={record.ordersCount === 0}
+            style={{ borderColor: '#eab308', color: '#ca8a04', fontWeight: 600 }}
           >
-            Corte
+            Cerrar Turno
           </Button>
         </Space>
+      ),
+    },
+  ];
+
+  // Columnas para tabla del Historial de Cortes Registrados
+  const cutsColumns = [
+    {
+      title: '# Corte',
+      dataIndex: 'cut_number',
+      key: 'cut_number',
+      render: (num: string) => <Tag color="geekblue" style={{ fontWeight: 700 }}>{num}</Tag>,
+    },
+    {
+      title: 'Despachador / Cajero',
+      dataIndex: 'user_name',
+      key: 'user_name',
+      render: (name: string, record: ShiftCut) => (
+        <div>
+          <strong style={{ fontSize: 13 }}>{name}</strong>
+          <div>
+            <Tag color={record.user_role === 'admin' ? 'gold' : 'cyan'} style={{ fontSize: 10, margin: 0 }}>
+              {record.user_role === 'admin' ? 'Admin' : 'Despachador'}
+            </Tag>
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Cierre de Turno',
+      dataIndex: 'closed_at',
+      key: 'closed_at',
+      render: (dateStr: string) => <span>{formatDateTime(dateStr)}</span>,
+    },
+    {
+      title: 'Pedidos',
+      dataIndex: 'orders_count',
+      key: 'orders_count',
+      align: 'center' as const,
+      render: (count: number) => <Tag>{count} pedidos</Tag>,
+    },
+    {
+      title: 'Total Vendido',
+      dataIndex: 'total_sales',
+      key: 'total_sales',
+      render: (val: number) => <strong style={{ color: '#0d9488' }}>{formatCurrency(val)}</strong>,
+    },
+    {
+      title: 'Efectivo Esperado',
+      dataIndex: 'cash_expected',
+      key: 'cash_expected',
+      render: (val: number) => <span>{formatCurrency(val)}</span>,
+    },
+    {
+      title: 'Efectivo Contado',
+      dataIndex: 'cash_counted',
+      key: 'cash_counted',
+      render: (val: number | null | undefined) => (
+        val !== null && val !== undefined ? (
+          <strong style={{ color: '#16a34a' }}>{formatCurrency(val)}</strong>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>-</span>
+        )
+      ),
+    },
+    {
+      title: 'Diferencia',
+      key: 'diff',
+      render: (_: any, record: ShiftCut) => {
+        if (record.cash_difference === null || record.cash_difference === undefined) {
+          return <span style={{ color: '#94a3b8' }}>-</span>;
+        }
+        if (Math.abs(record.cash_difference) < 0.01) {
+          return <Tag color="success">Cuadrada (Q 0.00)</Tag>;
+        }
+        if (record.cash_difference > 0) {
+          return <Tag color="blue">Sobrante (+{formatCurrency(record.cash_difference)})</Tag>;
+        }
+        return <Tag color="error">Faltante ({formatCurrency(record.cash_difference)})</Tag>;
+      },
+    },
+    {
+      title: 'Tarjetas / Transferencias',
+      key: 'other_payments',
+      render: (_: any, record: ShiftCut) => (
+        <div style={{ fontSize: 11, color: '#64748b' }}>
+          <div>Tarjeta: {formatCurrency(record.card_total)}</div>
+          <div>Transf: {formatCurrency(record.transfer_total)}</div>
+        </div>
+      ),
+    },
+    {
+      title: 'Acciones',
+      key: 'actions',
+      align: 'right' as const,
+      render: (_: any, record: ShiftCut) => (
+        <Button
+          size="small"
+          icon={<PrinterOutlined />}
+          onClick={() => handleReprintHistoricalCut(record)}
+        >
+          Reimprimir Ticket
+        </Button>
       ),
     },
   ];
@@ -516,7 +758,7 @@ export default function AdminBalancePage() {
       <Navbar />
 
       <main style={{ flex: 1, padding: '24px 16px', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
-        {/* Cabecera y botón volver */}
+        {/* Cabecera y Botón Volver */}
         <div style={{ marginBottom: 20 }}>
           <Link href="/admin">
             <Button icon={<ArrowLeftOutlined />} style={{ marginBottom: 12 }}>
@@ -535,14 +777,22 @@ export default function AdminBalancePage() {
           >
             <div>
               <Title level={2} style={{ margin: 0, color: '#0f172a' }}>
-                💰 Balance & Corte de Ventas por Usuario
+                💰 Balance & Corte de Caja por Usuario
               </Title>
               <Paragraph style={{ margin: '4px 0 0', color: '#64748b' }}>
-                Resumen de ventas recaudadas, métodos de pago y arqueo de caja por despachador en turno.
+                Arqueo de caja, ventas por despachador y registro oficial de cierres de turno.
               </Paragraph>
             </div>
 
             <Space wrap>
+              <Button
+                type="primary"
+                style={{ background: '#ca8a04', borderColor: '#ca8a04', fontWeight: 600 }}
+                icon={<AuditOutlined />}
+                onClick={() => handleOpenCutModal()}
+              >
+                ⚡ Realizar Corte de Turno
+              </Button>
               <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
                 Actualizar
               </Button>
@@ -557,63 +807,8 @@ export default function AdminBalancePage() {
           </div>
         </div>
 
-        {/* Barra de Filtros (Tiempo y Despachador) */}
-        <Card style={{ marginBottom: 24, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={14} md={16}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <Text strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <CalendarOutlined style={{ color: '#0d9488' }} /> Período:
-                </Text>
-                <Select
-                  value={datePreset}
-                  onChange={(val: DatePreset) => setDatePreset(val)}
-                  style={{ width: 170 }}
-                  options={[
-                    { value: 'today', label: '☀️ Hoy (Turno actual)' },
-                    { value: 'yesterday', label: '🌙 Ayer' },
-                    { value: 'week', label: '📅 Últimos 7 días' },
-                    { value: 'month', label: '🗓️ Este Mes' },
-                    { value: 'all', label: '♾️ Histórico Completo' },
-                    { value: 'custom', label: '📆 Personalizado' },
-                  ]}
-                />
-
-                {datePreset === 'custom' && (
-                  <RangePicker
-                    value={customRange as any}
-                    onChange={(dates: any) => setCustomRange(dates)}
-                    format="DD/MM/YYYY"
-                    style={{ minWidth: 240 }}
-                  />
-                )}
-              </div>
-            </Col>
-
-            <Col xs={24} sm={10} md={8}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
-                <Text strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <UserOutlined style={{ color: '#0d9488' }} /> Cajero:
-                </Text>
-                <Select
-                  value={selectedUserFilter}
-                  onChange={(val) => setSelectedUserFilter(val)}
-                  style={{ width: '100%', maxWidth: 220 }}
-                  options={[
-                    { value: 'all', label: 'Todos los Despachadores' },
-                    ...staffUsers.map((s) => ({
-                      value: s.id,
-                      label: `${s.full_name} (${s.role === 'admin' ? 'Admin' : 'Despachador'})`,
-                    })),
-                  ]}
-                />
-              </div>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Tarjetas KPI de Totales Generales */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        {/* Tarjetas KPI de Totales */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
           <Col xs={24} sm={12} lg={6}>
             <Card style={{ borderRadius: 12, border: '1px solid #ccfbf1', background: '#f0fdfa' }}>
               <Statistic
@@ -654,7 +849,7 @@ export default function AdminBalancePage() {
                 valueStyle={{ color: '#2563eb', fontWeight: 800, fontSize: 24 }}
               />
               <div style={{ marginTop: 6, fontSize: 12, color: '#1e40af' }}>
-                Comprobantes electrónicos
+                Vouchers y autorizaciones
               </div>
             </Card>
           </Col>
@@ -675,36 +870,276 @@ export default function AdminBalancePage() {
           </Col>
         </Row>
 
-        {/* Tabla Principal: Balance por Usuario */}
-        <Card
-          title={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <UserOutlined style={{ color: '#0d9488' }} />
-              <span>Desglose de Ventas por Despachador</span>
-            </div>
-          }
-          style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
-        >
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 40 }}>
-              <Spin size="large" />
-            </div>
-          ) : usersSalesList.length === 0 ? (
-            <Empty description="No hay despachos registrados para este filtro." />
-          ) : (
-            <Table
-              dataSource={usersSalesList}
-              columns={columns}
-              rowKey="userId"
-              pagination={false}
-              scroll={{ x: 800 }}
-            />
-          )}
+        {/* Pestañas: Turno Actual vs Historial de Cortes Registrados */}
+        <Card style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key: any) => setActiveTab(key)}
+            items={[
+              {
+                key: 'open_shift',
+                label: (
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>
+                    ⚡ Turno Actual (Ventas Abiertas)
+                  </span>
+                ),
+                children: (
+                  <div>
+                    {/* Filtros de Fecha y Cajero */}
+                    <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Text strong style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CalendarOutlined style={{ color: '#0d9488' }} /> Período:
+                        </Text>
+                        <Select
+                          value={datePreset}
+                          onChange={(val: DatePreset) => setDatePreset(val)}
+                          style={{ width: 170 }}
+                          options={[
+                            { value: 'today', label: '☀️ Hoy (Turno actual)' },
+                            { value: 'yesterday', label: '🌙 Ayer' },
+                            { value: 'week', label: '📅 Últimos 7 días' },
+                            { value: 'month', label: '🗓️ Este Mes' },
+                            { value: 'all', label: '♾️ Histórico Completo' },
+                            { value: 'custom', label: '📆 Personalizado' },
+                          ]}
+                        />
+
+                        {datePreset === 'custom' && (
+                          <RangePicker
+                            value={customRange as any}
+                            onChange={(dates: any) => setCustomRange(dates)}
+                            format="DD/MM/YYYY"
+                            style={{ minWidth: 240 }}
+                          />
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Text strong style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <UserOutlined style={{ color: '#0d9488' }} /> Cajero:
+                        </Text>
+                        <Select
+                          value={selectedUserFilter}
+                          onChange={(val) => setSelectedUserFilter(val)}
+                          style={{ width: 220 }}
+                          options={[
+                            { value: 'all', label: 'Todos los Despachadores' },
+                            ...staffUsers.map((s) => ({
+                              value: s.id,
+                              label: `${s.full_name} (${s.role === 'admin' ? 'Admin' : 'Despachador'})`,
+                            })),
+                          ]}
+                        />
+                      </div>
+                    </div>
+
+                    {loading ? (
+                      <div style={{ textAlign: 'center', padding: 40 }}>
+                        <Spin size="large" />
+                      </div>
+                    ) : usersSalesList.length === 0 ? (
+                      <Empty description="No hay despachos registrados para este filtro." />
+                    ) : (
+                      <Table
+                        dataSource={usersSalesList}
+                        columns={usersColumns}
+                        rowKey="userId"
+                        pagination={false}
+                        scroll={{ x: 800 }}
+                      />
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'cuts_history',
+                label: (
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>
+                    📑 Historial de Cortes Registrados ({shiftCuts.length})
+                  </span>
+                ),
+                children: (
+                  <div>
+                    {shiftCuts.length === 0 ? (
+                      <Empty description="Aún no se han registrado cierres de turno / cortes de caja." />
+                    ) : (
+                      <Table
+                        dataSource={shiftCuts}
+                        columns={cutsColumns}
+                        rowKey="id"
+                        pagination={{ pageSize: 8 }}
+                        scroll={{ x: 800 }}
+                      />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
         </Card>
       </main>
 
       {/* ================================================================= */}
-      {/* MODAL DE DETALLE Y ARQUEO INDIVIDUAL                             */}
+      {/* MODAL PARA REALIZAR CORTE DE CAJA / CIERRE DE TURNO              */}
+      {/* ================================================================= */}
+      <Modal
+        open={cutModalOpen}
+        onCancel={() => setCutModalOpen(false)}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AuditOutlined style={{ color: '#ca8a04', fontSize: 22 }} />
+            <span>Realizar Corte de Caja & Cierre de Turno</span>
+          </div>
+        }
+        width={620}
+        footer={[
+          <Button key="cancel" onClick={() => setCutModalOpen(false)} disabled={submittingCut}>
+            Cancelar
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            style={{ background: '#ca8a04', borderColor: '#ca8a04' }}
+            icon={<CheckCircleOutlined />}
+            loading={submittingCut}
+            disabled={targetUserUnclosedOrders.length === 0}
+            onClick={handleConfirmShiftCut}
+          >
+            Confirmar y Cerrar Turno
+          </Button>,
+        ]}
+      >
+        <div style={{ marginTop: 12 }}>
+          {/* Selector de Usuario a cortar */}
+          <div style={{ marginBottom: 16 }}>
+            <Text strong>Despachador / Cajero en Turno:</Text>
+            <Select
+              value={cutTargetUser}
+              onChange={(val) => setCutTargetUser(val)}
+              style={{ width: '100%', marginTop: 4 }}
+              options={staffUsers.map((s) => ({
+                value: s.full_name,
+                label: `${s.full_name} (${s.role === 'admin' ? 'Administrador' : 'Despachador'})`,
+              }))}
+            />
+          </div>
+
+          {/* Resumen del Turno Abierto */}
+          <div
+            style={{
+              background: '#fefce8',
+              border: '1px solid #fef08a',
+              borderRadius: 10,
+              padding: 16,
+              marginBottom: 16,
+            }}
+          >
+            <div style={{ fontSize: 13, color: '#854d0e', marginBottom: 8, fontWeight: 700 }}>
+              VENTAS ACUMULADAS EN ESTE TURNO:
+            </div>
+
+            <Row gutter={[12, 12]}>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Pedidos:</Text>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{targetUserShiftSummary.count} pedidos</div>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Efectivo Esperado:</Text>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#16a34a' }}>
+                  {formatCurrency(targetUserShiftSummary.cash)}
+                </div>
+              </Col>
+              <Col span={8}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Gran Total:</Text>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#0d9488' }}>
+                  {formatCurrency(targetUserShiftSummary.sales)}
+                </div>
+              </Col>
+              <Col span={12}>
+                <span style={{ fontSize: 12, color: '#2563eb' }}>
+                  💳 Tarjetas: {formatCurrency(targetUserShiftSummary.card)}
+                </span>
+              </Col>
+              <Col span={12}>
+                <span style={{ fontSize: 12, color: '#7c3aed' }}>
+                  🏦 Transferencias: {formatCurrency(targetUserShiftSummary.transfer)}
+                </span>
+              </Col>
+            </Row>
+          </div>
+
+          {targetUserUnclosedOrders.length === 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              message="Sin ventas pendientes de corte"
+              description={`El despachador ${cutTargetUser} no tiene pedidos activos por cerrar en este momento.`}
+              style={{ marginBottom: 16 }}
+            />
+          ) : (
+            <>
+              {/* Conteo Físico de Efectivo */}
+              <div style={{ marginBottom: 16 }}>
+                <Text strong style={{ fontSize: 14 }}>
+                  Efectivo Físico Contado en Caja (Q):
+                </Text>
+                <InputNumber
+                  min={0}
+                  step={0.5}
+                  prefix="Q"
+                  placeholder="Ingresa el monto de billetes y monedas contados..."
+                  value={countedCash}
+                  onChange={(val) => setCountedCash(val)}
+                  style={{ width: '100%', marginTop: 4, height: 42, fontSize: 16 }}
+                />
+
+                {countedCash !== null && (
+                  <div style={{ marginTop: 8 }}>
+                    {Math.abs(targetUserShiftSummary.diff) < 0.01 ? (
+                      <Alert
+                        type="success"
+                        showIcon
+                        message="Caja Cuadrada Perfecta"
+                        description="El efectivo físico coincide exactamente con lo registrado en sistema."
+                      />
+                    ) : targetUserShiftSummary.diff > 0 ? (
+                      <Alert
+                        type="info"
+                        showIcon
+                        message={`Sobrante en Caja: +${formatCurrency(targetUserShiftSummary.diff)}`}
+                        description="Hay más dinero físico en caja del esperado según las ventas."
+                      />
+                    ) : (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={`Faltante en Caja: ${formatCurrency(targetUserShiftSummary.diff)}`}
+                        description="Hay menos dinero físico en caja del esperado según las ventas registradas."
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Observaciones del Cierre */}
+              <div style={{ marginBottom: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>Notas u observaciones del cierre (opcional):</Text>
+                <Input.TextArea
+                  rows={2}
+                  placeholder="Ej: Turno entregado a Ana Gómez. Sin novedades."
+                  value={cutNotes}
+                  onChange={(e) => setCutNotes(e.target.value)}
+                  style={{ marginTop: 4 }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* ================================================================= */}
+      {/* MODAL DE DETALLE Y DESGLOSE INDIVIDUAL                           */}
       {/* ================================================================= */}
       <Modal
         open={detailModalOpen}
@@ -712,212 +1147,170 @@ export default function AdminBalancePage() {
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <FileTextOutlined style={{ color: '#0d9488', fontSize: 20 }} />
-            <span>Arqueo y Desglose: {detailUser?.userName}</span>
+            <span>Desglose de Pedidos: {detailUser?.userName}</span>
           </div>
         }
-        width={850}
+        width={800}
         footer={[
           <Button key="close" onClick={() => setDetailModalOpen(false)}>
             Cerrar
           </Button>,
           <Button
-            key="print"
+            key="corte"
             type="primary"
-            style={{ background: '#0d9488' }}
-            icon={<PrinterOutlined />}
+            style={{ background: '#ca8a04', borderColor: '#ca8a04' }}
+            icon={<AuditOutlined />}
             onClick={() => {
-              if (detailUser) handlePrintCorte(detailUser);
+              setDetailModalOpen(false);
+              if (detailUser) handleOpenCutModal(detailUser.userName);
             }}
           >
-            Imprimir Comprobante de Corte
+            Hacer Corte de Turno
           </Button>,
         ]}
       >
         {detailUser && (
           <div style={{ marginTop: 12 }}>
-            {/* Resumen del Arqueo */}
-            <div
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: 10,
-                padding: 16,
-                marginBottom: 20,
-              }}
-            >
-              <Row gutter={[16, 12]}>
-                <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Pedidos Cobrados:</Text>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{detailUser.ordersCount}</div>
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>Efectivo a Entregar:</Text>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#16a34a' }}>
-                    {formatCurrency(detailUser.cashAmount)}
-                  </div>
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>En Tarjetas / POS:</Text>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#2563eb' }}>
-                    {formatCurrency(detailUser.cardAmount)}
-                  </div>
-                </Col>
-                <Col xs={12} sm={6}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>En Transferencias:</Text>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#7c3aed' }}>
-                    {formatCurrency(detailUser.transferAmount)}
-                  </div>
-                </Col>
-              </Row>
-              <Divider style={{ margin: '12px 0' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text strong>Gran Total de Ventas:</Text>
-                <span style={{ fontSize: 20, fontWeight: 800, color: '#0d9488' }}>
-                  {formatCurrency(detailUser.totalSales)}
-                </span>
-              </div>
-            </div>
-
-            {/* Listado de Pedidos Despachados por este usuario */}
-            <Text strong style={{ fontSize: 14 }}>
-              Historial de Pedidos Despachados ({detailUser.orders.length}):
-            </Text>
-
-            {detailUser.orders.length === 0 ? (
-              <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>
-                No se despacharon pedidos en este período.
-              </div>
-            ) : (
-              <Table
-                dataSource={detailUser.orders}
-                rowKey="id"
-                pagination={{ pageSize: 5 }}
-                size="small"
-                style={{ marginTop: 10 }}
-                columns={[
-                  {
-                    title: '# Pedido',
-                    dataIndex: 'order_number',
-                    key: 'order_number',
-                    render: (num: string, record: Order) => (
-                      <Link href={`/order/${record.id}`} target="_blank" style={{ fontWeight: 700 }}>
-                        #{num}
-                      </Link>
-                    ),
-                  },
-                  {
-                    title: 'Hora',
-                    key: 'time',
-                    render: (_: any, record: Order) => (
-                      <span>{dayjs(record.dispatched_at || record.created_at).format('HH:mm:ss')}</span>
-                    ),
-                  },
-                  {
-                    title: 'Cliente',
-                    dataIndex: 'customer_name',
-                    key: 'customer_name',
-                  },
-                  {
-                    title: 'Métodos de Pago',
-                    key: 'payments',
-                    render: (_: any, record: Order) => (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {(record.payment_details || []).map((p, idx) => (
-                          <Tag
-                            key={idx}
-                            color={
-                              p.method === 'efectivo'
-                                ? 'green'
-                                : p.method === 'tarjeta'
-                                ? 'blue'
-                                : 'purple'
-                            }
-                            style={{ margin: 0, fontSize: 11 }}
-                          >
-                            {p.method.toUpperCase()}: {formatCurrency(p.amount)}
-                            {p.reference ? ` (${p.reference})` : ''}
-                          </Tag>
-                        ))}
-                      </div>
-                    ),
-                  },
-                  {
-                    title: 'Total',
-                    dataIndex: 'total_amount',
-                    key: 'total_amount',
-                    align: 'right' as const,
-                    render: (val: number) => (
-                      <strong>{formatCurrency(val)}</strong>
-                    ),
-                  },
-                ]}
-              />
-            )}
+            <Table
+              dataSource={detailUser.orders}
+              rowKey="id"
+              pagination={{ pageSize: 6 }}
+              size="small"
+              columns={[
+                {
+                  title: '# Pedido',
+                  dataIndex: 'order_number',
+                  key: 'order_number',
+                  render: (num: string, record: Order) => (
+                    <Link href={`/order/${record.id}`} target="_blank" style={{ fontWeight: 700 }}>
+                      #{num}
+                    </Link>
+                  ),
+                },
+                {
+                  title: 'Hora',
+                  key: 'time',
+                  render: (_: any, record: Order) => (
+                    <span>{dayjs(record.dispatched_at || record.created_at).format('HH:mm:ss')}</span>
+                  ),
+                },
+                {
+                  title: 'Cliente',
+                  dataIndex: 'customer_name',
+                  key: 'customer_name',
+                },
+                {
+                  title: 'Pagos',
+                  key: 'payments',
+                  render: (_: any, record: Order) => (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {(record.payment_details || []).map((p, idx) => (
+                        <Tag
+                          key={idx}
+                          color={p.method === 'efectivo' ? 'green' : p.method === 'tarjeta' ? 'blue' : 'purple'}
+                          style={{ margin: 0, fontSize: 11 }}
+                        >
+                          {p.method.toUpperCase()}: {formatCurrency(p.amount)}
+                        </Tag>
+                      ))}
+                    </div>
+                  ),
+                },
+                {
+                  title: 'Total',
+                  dataIndex: 'total_amount',
+                  key: 'total_amount',
+                  align: 'right' as const,
+                  render: (val: number) => <strong>{formatCurrency(val)}</strong>,
+                },
+              ]}
+            />
           </div>
         )}
       </Modal>
 
       {/* ================================================================= */}
-      {/* ÁREA DE IMPRESIÓN (Corte de Caja Térmico / Ticket)                */}
+      {/* ÁREA DE IMPRESIÓN (Ticket de Corte Térmico / Cierre de Turno)      */}
       {/* ================================================================= */}
       <div id="print-corte-area" style={{ display: 'none' }}>
-        {printUser && (
+        {printCut && (
           <div style={{ textAlign: 'center', lineHeight: 1.4 }}>
             <h2 style={{ margin: '0 0 4px 0', fontSize: 18, fontWeight: 900 }}>LA TIENDITA</h2>
-            <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 13, fontWeight: 900, textTransform: 'uppercase' }}>
               *** CORTE DE CAJA / CIERRE DE TURNO ***
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, margin: '4px 0' }}>
+              COMPROBANTE #{printCut.cutNumber}
             </div>
             <div style={{ fontSize: 11, margin: '6px 0', borderBottom: '1px dashed #000', paddingBottom: 6 }}>
               Fecha Impresión: {dayjs().format('DD/MM/YYYY HH:mm:ss')}
             </div>
 
             <div style={{ textAlign: 'left', fontSize: 12, margin: '10px 0' }}>
-              <div><strong>Cajero / Despachador:</strong> {printUser.userName}</div>
-              <div><strong>Período:</strong> {datePreset.toUpperCase()}</div>
-              <div><strong>Cant. Pedidos Cobrados:</strong> {printUser.ordersCount}</div>
+              <div><strong>Despachador:</strong> {printCut.userName}</div>
+              <div><strong>Inicio Turno:</strong> {formatDateTime(printCut.startedAt)}</div>
+              <div><strong>Cierre Turno:</strong> {formatDateTime(printCut.closedAt)}</div>
+              <div><strong>Pedidos Atendidos:</strong> {printCut.ordersCount} pedidos</div>
+              {printCut.notes && (
+                <div style={{ fontStyle: 'italic', marginTop: 4 }}>
+                  <strong>Notas:</strong> {printCut.notes}
+                </div>
+              )}
             </div>
 
             <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', margin: '10px 0', textAlign: 'left', fontSize: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>(+) Efectivo Cobrado:</span>
-                <strong>{formatCurrency(printUser.cashAmount)}</strong>
+                <strong>{formatCurrency(printCut.cashExpected)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>(+) Tarjetas / POS:</span>
-                <strong>{formatCurrency(printUser.cardAmount)}</strong>
+                <strong>{formatCurrency(printCut.cardTotal)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>(+) Transferencias / QR:</span>
-                <strong>{formatCurrency(printUser.transferAmount)}</strong>
+                <strong>{formatCurrency(printCut.transferTotal)}</strong>
               </div>
-              {printUser.otherAmount > 0 && (
+              {printCut.otherTotal > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>(+) Otros Medios:</span>
-                  <strong>{formatCurrency(printUser.otherAmount)}</strong>
+                  <strong>{formatCurrency(printCut.otherTotal)}</strong>
                 </div>
               )}
               <div style={{ borderTop: '1px solid #000', marginTop: 6, paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                <strong>TOTAL RECAUDADO:</strong>
-                <strong>{formatCurrency(printUser.totalSales)}</strong>
+                <strong>TOTAL VENDIDO:</strong>
+                <strong>{formatCurrency(printCut.totalSales)}</strong>
               </div>
             </div>
 
             <div style={{ textAlign: 'left', fontSize: 11, background: '#f5f5f5', padding: 8, margin: '10px 0' }}>
-              <div><strong>EFECTIVO A ENTREGAR EN CAJA:</strong></div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: '#000' }}>
-                {formatCurrency(printUser.cashAmount)}
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>EFECTIVO ESPERADO:</span>
+                <strong>{formatCurrency(printCut.cashExpected)}</strong>
               </div>
-              <div style={{ fontSize: 10, color: '#555' }}>
-                (Recibido: {formatCurrency(printUser.cashReceived)} - Cambio: {formatCurrency(printUser.cashChange)})
-              </div>
+              {printCut.cashCounted !== null && printCut.cashCounted !== undefined && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span>EFECTIVO CONTADO:</span>
+                    <strong>{formatCurrency(printCut.cashCounted)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span>DIFERENCIA:</span>
+                    <strong>
+                      {printCut.cashDifference && printCut.cashDifference > 0 ? '+' : ''}
+                      {formatCurrency(printCut.cashDifference || 0)}
+                    </strong>
+                  </div>
+                </>
+              )}
             </div>
 
             <div style={{ marginTop: 40, borderTop: '1px solid #000', paddingTop: 6, fontSize: 11 }}>
-              Firma del Despachador: {printUser.userName}
+              Firma Cajero: {printCut.userName}
             </div>
 
             <div style={{ marginTop: 30, borderTop: '1px solid #000', paddingTop: 6, fontSize: 11 }}>
-              Firma del Supervisor / Administrador
+              Firma Supervisor / Administrador
             </div>
 
             <div style={{ marginTop: 20, fontSize: 10, color: '#777' }}>
@@ -929,4 +1322,3 @@ export default function AdminBalancePage() {
     </div>
   );
 }
-

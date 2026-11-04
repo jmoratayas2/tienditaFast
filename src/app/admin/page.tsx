@@ -38,9 +38,11 @@ import {
   PlusCircleOutlined,
   ShoppingCartOutlined,
   ExclamationCircleOutlined,
+  CameraOutlined,
 } from '@ant-design/icons';
 import { Navbar } from '@/components/Navbar';
 import { DispatchModal } from '@/components/DispatchModal';
+import { BarcodeScannerModal } from '@/components/BarcodeScannerModal';
 import { Order, Product, UserRole } from '@/lib/types';
 import { dataService } from '@/lib/dataService';
 import { formatCurrency, formatDateTime, calculateRemainingSeconds, formatCountdown } from '@/lib/formatters';
@@ -63,6 +65,7 @@ export default function AdminDashboardPage() {
 
   // Estado para el modal de "Tomar Pedido Mostrador"
   const [takeOrderModalOpen, setTakeOrderModalOpen] = useState(false);
+  const [counterScannerOpen, setCounterScannerOpen] = useState(false);
   const [orderCustomerName, setOrderCustomerName] = useState('Cliente Mostrador');
   const [orderCustomerPhone, setOrderCustomerPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
@@ -197,6 +200,22 @@ export default function AdminDashboardPage() {
       }
       setSelectedItems([...selectedItems, { productId: prodId, quantity: 1 }]);
     }
+  };
+
+  const handleScanCounterItem = (code: string) => {
+    const cleaned = code.trim().toLowerCase();
+    const prod = products.find(
+      (p) =>
+        p.id.toLowerCase() === cleaned ||
+        (p.barcode && p.barcode.toLowerCase() === cleaned) ||
+        p.name.toLowerCase() === cleaned
+    );
+    if (!prod) {
+      message.error(`Producto con código "${code}" no encontrado.`);
+      return;
+    }
+    handleAddItemToCounterOrder(prod.id);
+    message.success(`¡${prod.name} agregado al pedido!`);
   };
 
   const handleUpdateCounterItemQty = (prodId: string, qty: number) => {
@@ -687,9 +706,18 @@ export default function AdminDashboardPage() {
             </Col>
           </Row>
 
-          <Divider orientation="left" style={{ margin: '8px 0 12px 0', fontSize: 13 }}>
-            Seleccionar Productos
-          </Divider>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 12px 0' }}>
+            <Text strong style={{ fontSize: 13 }}>Seleccionar Productos:</Text>
+            <Button
+              size="small"
+              type="dashed"
+              icon={<CameraOutlined style={{ color: '#0d9488' }} />}
+              onClick={() => setCounterScannerOpen(true)}
+              style={{ borderColor: '#0d9488', color: '#0d9488', fontWeight: 600 }}
+            >
+              📷 Escanear con Cámara
+            </Button>
+          </div>
 
           {/* Selector de productos */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxHeight: 150, overflowY: 'auto', padding: 4, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -776,6 +804,14 @@ export default function AdminDashboardPage() {
         currentUser={currentUser}
         onClose={() => setDispatchModalOpen(false)}
         onSuccess={fetchOrdersAndProducts}
+      />
+
+      {/* Escáner de Código de Barras / Cámara para Pedido Mostrador */}
+      <BarcodeScannerModal
+        visible={counterScannerOpen}
+        onClose={() => setCounterScannerOpen(false)}
+        onScan={handleScanCounterItem}
+        title="Escanear Producto para Pedido Mostrador"
       />
 
       {/* Modal para Anular Pedido */}

@@ -2,7 +2,7 @@
 -- DATOS SEMILLA (PRODUCTOS DE EJEMPLO CON HORARIOS Y DESTACADOS)
 -- ==============================================================================
 
-INSERT INTO public.products (name, description, price, stock, category, image_url, is_featured, available_all_day, available_from, available_to)
+INSERT INTO public.products (name, description, price, stock, category, image_url, barcode, is_featured, available_all_day, available_from, available_to)
 VALUES 
     (
         'Café Espresso Especial 250g',
@@ -11,6 +11,7 @@ VALUES
         25,
         'Cafetería',
         'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
+        '7401001',
         true,
         true,
         '06:00',
@@ -23,6 +24,7 @@ VALUES
         18,
         'Panadería',
         'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&auto=format&fit=crop&q=80',
+        '7401002',
         true,
         false,
         '06:00',
@@ -35,6 +37,7 @@ VALUES
         12,
         'Panadería',
         'https://images.unsplash.com/photo-1628102491629-778571d893a3?w=500&auto=format&fit=crop&q=80',
+        '7401003',
         false,
         true,
         '07:00',
@@ -47,6 +50,7 @@ VALUES
         30,
         'Bebidas',
         'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
+        '7401004',
         false,
         true,
         '06:00',
@@ -59,6 +63,7 @@ VALUES
         10,
         'Comidas',
         'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80',
+        '7401005',
         true,
         false,
         '11:00',
@@ -71,6 +76,7 @@ VALUES
         15,
         'Bebidas',
         'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80',
+        '7401006',
         false,
         true,
         '07:00',
@@ -83,6 +89,7 @@ VALUES
         20,
         'Repostería',
         'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?w=500&auto=format&fit=crop&q=80',
+        '7401007',
         true,
         true,
         '07:00',
@@ -95,6 +102,7 @@ VALUES
         40,
         'Bebidas',
         'https://images.unsplash.com/photo-1559839914-ba2ac5cd0c8e?w=500&auto=format&fit=crop&q=80',
+        '7401008',
         false,
         true,
         '00:00',
@@ -107,6 +115,7 @@ VALUES
         8,
         'Comidas',
         'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=80',
+        '7401009',
         false,
         false,
         '07:00',
@@ -119,6 +128,7 @@ VALUES
         22,
         'Repostería',
         'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500&auto=format&fit=crop&q=80',
+        '7401010',
         false,
         true,
         '08:00',
