@@ -1,4 +1,18 @@
-import { Product, Order } from './types';
+import { Product, StoreSettings } from './types';
+
+export const DEFAULT_STORE_SETTINGS: StoreSettings = {
+  id: 'current',
+  store_name: 'La Tiendita',
+  banner_title: '¡Haz tu pedido en línea y retira en el mostrador!',
+  banner_message: 'Selecciona tus productos. No necesitas registrarte. Al confirmar, tu pedido queda reservado con un tiempo límite para retirarlo en tienda.',
+  banner_active: true,
+  pickup_time_minutes: 10,
+  is_store_open: true,
+  closed_message: 'En este momento la tienda se encuentra cerrada para pedidos en línea. Por favor visítanos directamente en el mostrador.',
+  show_featured_section: true,
+  opening_time: '07:00',
+  closing_time: '21:00',
+};
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -10,6 +24,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Cafetería',
     image_url: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    is_featured: true,
+    available_all_day: true,
+    available_from: '06:00',
+    available_to: '22:00',
   },
   {
     id: 'prod-002',
@@ -20,6 +38,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Panadería',
     image_url: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    is_featured: true,
+    available_all_day: false,
+    available_from: '06:00',
+    available_to: '12:00',
   },
   {
     id: 'prod-003',
@@ -30,6 +52,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Panadería',
     image_url: 'https://images.unsplash.com/photo-1628102491629-778571d893a3?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: true,
   },
   {
     id: 'prod-004',
@@ -40,6 +63,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Bebidas',
     image_url: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: true,
   },
   {
     id: 'prod-005',
@@ -50,6 +74,10 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Comidas',
     image_url: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    is_featured: true,
+    available_all_day: false,
+    available_from: '11:00',
+    available_to: '16:00',
   },
   {
     id: 'prod-006',
@@ -60,6 +88,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Bebidas',
     image_url: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: true,
   },
   {
     id: 'prod-007',
@@ -70,6 +99,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Repostería',
     image_url: 'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    is_featured: true,
+    available_all_day: true,
   },
   {
     id: 'prod-008',
@@ -80,6 +111,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Bebidas',
     image_url: 'https://images.unsplash.com/photo-1559839914-ba2ac5cd0c8e?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: true,
   },
   {
     id: 'prod-009',
@@ -90,6 +122,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Comidas',
     image_url: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: false,
+    available_from: '07:00',
+    available_to: '12:00',
   },
   {
     id: 'prod-010',
@@ -100,6 +135,6 @@ export const INITIAL_PRODUCTS: Product[] = [
     category: 'Repostería',
     image_url: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500&auto=format&fit=crop&q=80',
     is_active: true,
+    available_all_day: true,
   },
 ];
-

@@ -13,9 +13,19 @@ CREATE TABLE IF NOT EXISTS public.products (
     category TEXT DEFAULT 'General',
     image_url TEXT,
     is_active BOOLEAN DEFAULT true,
+    is_featured BOOLEAN DEFAULT false,
+    available_all_day BOOLEAN DEFAULT true,
+    available_from TEXT DEFAULT '00:00',
+    available_to TEXT DEFAULT '23:59',
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migración segura por si la tabla ya existía
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT false;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_all_day BOOLEAN DEFAULT true;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_from TEXT DEFAULT '00:00';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_to TEXT DEFAULT '23:59';
 
 -- 2. Secuencia para número de pedido legible (ej: PED-1001)
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 1001;
@@ -63,19 +73,75 @@ CREATE TABLE IF NOT EXISTS public.staff_users (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 6. Tabla de Configuración del Portal de Clientes
+CREATE TABLE IF NOT EXISTS public.store_settings (
+    id TEXT PRIMARY KEY DEFAULT 'current',
+    store_name TEXT DEFAULT 'La Tiendita',
+    banner_title TEXT DEFAULT '¡Haz tu pedido en línea y retira en el mostrador!',
+    banner_message TEXT DEFAULT 'Selecciona tus productos. No necesitas registrarte. Al confirmar, tu pedido queda reservado con un tiempo límite para retirarlo en tienda.',
+    banner_active BOOLEAN DEFAULT true,
+    pickup_time_minutes INT DEFAULT 10,
+    is_store_open BOOLEAN DEFAULT true,
+    closed_message TEXT DEFAULT 'En este momento la tienda se encuentra cerrada para pedidos en línea.',
+    show_featured_section BOOLEAN DEFAULT true,
+    opening_time TEXT DEFAULT '07:00',
+    closing_time TEXT DEFAULT '21:00',
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Insertar configuración inicial predeterminada
+INSERT INTO public.store_settings (id, store_name, banner_title, banner_message, banner_active, pickup_time_minutes, is_store_open, show_featured_section)
+VALUES (
+    'current',
+    'La Tiendita',
+    '¡Haz tu pedido en línea y retira en el mostrador!',
+    'Selecciona tus productos. No necesitas registrarte. Al confirmar, tu pedido queda reservado con un tiempo límite para retirarlo en tienda.',
+    true,
+    10,
+    true,
+    true
+)
+ON CONFLICT (id) DO NOTHING;
+
 -- Índices para optimizar consultas frecuentes
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_expires_at ON public.orders(expires_at);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON public.order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
+CREATE INDEX IF NOT EXISTS idx_products_featured ON public.products(is_featured);
 CREATE INDEX IF NOT EXISTS idx_staff_users_email ON public.staff_users(email);
 CREATE INDEX IF NOT EXISTS idx_staff_users_role ON public.staff_users(role);
 
 -- Habilitar Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.staff_users;
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.order_items;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.staff_users;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.store_settings;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ==============================================================================
 -- TRIGGER PARA SINCRONIZAR USUARIOS DE AUTH CON STAFF_USERS
@@ -163,6 +229,7 @@ DECLARE
     v_order_id UUID;
     v_order_number TEXT;
     v_expires_at TIMESTAMPTZ;
+    v_pickup_minutes INT := 10;
 BEGIN
     PERFORM public.expire_stale_orders();
 
@@ -170,7 +237,13 @@ BEGIN
         RAISE EXCEPTION 'El carrito de compras no puede estar vacío.';
     END IF;
 
-    v_expires_at := now() + interval '10 minutes';
+    -- Obtener minutos configurados de retiro
+    SELECT COALESCE(pickup_time_minutes, 10) INTO v_pickup_minutes
+    FROM public.store_settings
+    WHERE id = 'current';
+
+    v_expires_at := now() + (v_pickup_minutes || ' minutes')::interval;
+
     INSERT INTO public.orders (
         customer_name,
         customer_phone,
@@ -327,7 +400,7 @@ BEGIN
 
     IF v_status = 'expired' OR (v_status = 'pending' AND v_expires_at < now()) THEN
         PERFORM public.expire_stale_orders();
-        RAISE EXCEPTION 'El tiempo límite de 10 minutos para retirar este pedido ya ha expirado.';
+        RAISE EXCEPTION 'El tiempo límite para retirar este pedido ya ha expirado.';
     END IF;
 
     UPDATE public.orders
@@ -355,6 +428,7 @@ ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staff_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
 
 -- Productos:
 CREATE POLICY "Productos visibles para todos" 
@@ -396,5 +470,15 @@ USING (true);
 
 CREATE POLICY "Gestión de usuarios de personal"
 ON public.staff_users FOR ALL
+USING (true)
+WITH CHECK (true);
+
+-- Configuración del Portal:
+CREATE POLICY "Lectura de configuracion del portal"
+ON public.store_settings FOR SELECT
+USING (true);
+
+CREATE POLICY "Personal modifica configuracion del portal"
+ON public.store_settings FOR ALL
 USING (true)
 WITH CHECK (true);

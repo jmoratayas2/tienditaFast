@@ -11,13 +11,13 @@ import {
   AppstoreOutlined,
   UserOutlined,
   TeamOutlined,
+  SettingOutlined,
   LogoutOutlined,
   SafetyCertificateOutlined,
-  ArrowRightOutlined,
 } from '@ant-design/icons';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 import { dataService } from '@/lib/dataService';
-import { StaffUser, UserRole } from '@/lib/types';
+import { UserRole } from '@/lib/types';
 
 interface NavbarProps {
   cartCount?: number;
@@ -129,6 +129,11 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
     ...(isAdmin
       ? [
           {
+            key: 'configuracion',
+            icon: <SettingOutlined />,
+            label: <Link href="/admin/configuracion">Configurar Portal</Link>,
+          },
+          {
             key: 'usuarios',
             icon: <TeamOutlined />,
             label: <Link href="/admin/usuarios">Personal & Roles</Link>,
@@ -203,16 +208,24 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
 
               <Link href="/admin/inventario">
                 <Button type={pathname === '/admin/inventario' ? 'primary' : 'default'} icon={<AppstoreOutlined />}>
-                  Inventario
+                  Catálogo & Horarios
                 </Button>
               </Link>
 
               {isAdmin && (
-                <Link href="/admin/usuarios">
-                  <Button type={pathname === '/admin/usuarios' ? 'primary' : 'default'} icon={<TeamOutlined />}>
-                    Personal
-                  </Button>
-                </Link>
+                <>
+                  <Link href="/admin/configuracion">
+                    <Button type={pathname === '/admin/configuracion' ? 'primary' : 'default'} icon={<SettingOutlined />}>
+                      Configurar Portal
+                    </Button>
+                  </Link>
+
+                  <Link href="/admin/usuarios">
+                    <Button type={pathname === '/admin/usuarios' ? 'primary' : 'default'} icon={<TeamOutlined />}>
+                      Personal
+                    </Button>
+                  </Link>
+                </>
               )}
 
               <Link href="/">

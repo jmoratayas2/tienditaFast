@@ -1,3 +1,5 @@
+import { Product } from './types';
+
 export function formatCurrency(amount: number, currency: string = '₡'): string {
   const formatted = new Intl.NumberFormat('es-CR', {
     minimumFractionDigits: 0,
@@ -32,3 +34,31 @@ export function formatCountdown(totalSeconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
+export function isProductAvailableNow(product: Product): { available: boolean; scheduleText?: string } {
+  if (!product.is_active) {
+    return { available: false, scheduleText: 'No disponible' };
+  }
+
+  if (product.available_all_day !== false && (!product.available_from || !product.available_to)) {
+    return { available: true };
+  }
+
+  const now = new Date();
+  const currentHours = now.getHours().toString().padStart(2, '0');
+  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+  const currentTime = `${currentHours}:${currentMinutes}`;
+
+  const from = product.available_from || '00:00';
+  const to = product.available_to || '23:59';
+
+  const scheduleText = `Horario: ${from} - ${to}`;
+
+  if (currentTime >= from && currentTime <= to) {
+    return { available: true, scheduleText };
+  }
+
+  return {
+    available: false,
+    scheduleText: `Disponible de ${from} a ${to}`,
+  };
+}

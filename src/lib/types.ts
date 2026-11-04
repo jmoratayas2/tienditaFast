@@ -33,7 +33,26 @@ export interface Product {
   category: string;
   image_url: string | null;
   is_active: boolean;
+  is_featured?: boolean;
+  available_all_day?: boolean;
+  available_from?: string; // Formato HH:mm, ej: "06:00"
+  available_to?: string;   // Formato HH:mm, ej: "11:30"
   created_at?: string;
+  updated_at?: string;
+}
+
+export interface StoreSettings {
+  id: string;
+  store_name: string;
+  banner_title: string;
+  banner_message: string;
+  banner_active: boolean;
+  pickup_time_minutes: number;
+  is_store_open: boolean;
+  closed_message: string;
+  show_featured_section: boolean;
+  opening_time?: string;
+  closing_time?: string;
   updated_at?: string;
 }
 

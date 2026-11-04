@@ -1,8 +1,8 @@
 -- ==============================================================================
--- DATOS SEMILLA (PRODUCTOS DE EJEMPLO)
+-- DATOS SEMILLA (PRODUCTOS DE EJEMPLO CON HORARIOS Y DESTACADOS)
 -- ==============================================================================
 
-INSERT INTO public.products (name, description, price, stock, category, image_url)
+INSERT INTO public.products (name, description, price, stock, category, image_url, is_featured, available_all_day, available_from, available_to)
 VALUES 
     (
         'Café Espresso Especial 250g',
@@ -10,7 +10,11 @@ VALUES
         4500.00,
         25,
         'Cafetería',
-        'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=500&auto=format&fit=crop&q=80',
+        true,
+        true,
+        '06:00',
+        '22:00'
     ),
     (
         'Croissant de Mantequilla Francés',
@@ -18,7 +22,11 @@ VALUES
         1500.00,
         18,
         'Panadería',
-        'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500&auto=format&fit=crop&q=80',
+        true,
+        false,
+        '06:00',
+        '12:00'
     ),
     (
         'Empanada Artesanal de Pollo y Champiñones',
@@ -26,7 +34,11 @@ VALUES
         1800.00,
         12,
         'Panadería',
-        'https://images.unsplash.com/photo-1628102491629-778571d893a3?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1628102491629-778571d893a3?w=500&auto=format&fit=crop&q=80',
+        false,
+        true,
+        '07:00',
+        '21:00'
     ),
     (
         'Jugo Natural de Naranja y Fruta de la Pasión 500ml',
@@ -34,7 +46,11 @@ VALUES
         2200.00,
         30,
         'Bebidas',
-        'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
+        false,
+        true,
+        '06:00',
+        '21:00'
     ),
     (
         'Sandwich Gourmet Jamón Serrano y Queso Gouda',
@@ -42,7 +58,11 @@ VALUES
         3900.00,
         10,
         'Comidas',
-        'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80',
+        true,
+        false,
+        '11:00',
+        '16:00'
     ),
     (
         'Batido Energético Frutos Rojos 400ml',
@@ -50,7 +70,11 @@ VALUES
         2800.00,
         15,
         'Bebidas',
-        'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80',
+        false,
+        true,
+        '07:00',
+        '21:00'
     ),
     (
         'Muffin de Chocolate Belga',
@@ -58,7 +82,11 @@ VALUES
         1400.00,
         20,
         'Repostería',
-        'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1607958996333-41aef7caefaa?w=500&auto=format&fit=crop&q=80',
+        true,
+        true,
+        '07:00',
+        '21:00'
     ),
     (
         'Agua Mineral con Gas 500ml',
@@ -66,7 +94,11 @@ VALUES
         1000.00,
         40,
         'Bebidas',
-        'https://images.unsplash.com/photo-1559839914-ba2ac5cd0c8e?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1559839914-ba2ac5cd0c8e?w=500&auto=format&fit=crop&q=80',
+        false,
+        true,
+        '00:00',
+        '23:59'
     ),
     (
         'Bowl de Yogur Griego y Granola Artesanal',
@@ -74,7 +106,11 @@ VALUES
         3200.00,
         8,
         'Comidas',
-        'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=80',
+        false,
+        false,
+        '07:00',
+        '12:00'
     ),
     (
         'Galleta Rellena Choco-Avellana',
@@ -82,7 +118,11 @@ VALUES
         1200.00,
         22,
         'Repostería',
-        'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500&auto=format&fit=crop&q=80'
+        'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500&auto=format&fit=crop&q=80',
+        false,
+        true,
+        '08:00',
+        '21:00'
     )
 ON CONFLICT DO NOTHING;
 

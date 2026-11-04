@@ -2,11 +2,10 @@
 
 import React, { useState } from 'react';
 import { Card, Tag, Button, InputNumber, Space, Typography, Tooltip } from 'antd';
-import { PlusOutlined, ShoppingCartOutlined } from '@ant-design/icons';
+import { PlusOutlined, ClockCircleOutlined, StarFilled } from '@ant-design/icons';
 import { Product } from '@/lib/types';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, isProductAvailableNow } from '@/lib/formatters';
 
-const { Meta } = Card;
 const { Text, Title } = Typography;
 
 interface ProductCardProps {
@@ -24,8 +23,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const isOutOfStock = product.stock <= 0;
   const availableToSelect = Math.max(0, product.stock - cartQuantity);
 
+  const availability = isProductAvailableNow(product);
+  const isAvailableByTime = availability.available;
+
+  const canAdd = !isOutOfStock && isAvailableByTime && availableToSelect > 0;
+
   const handleAdd = () => {
-    if (quantity > 0 && quantity <= availableToSelect) {
+    if (quantity > 0 && quantity <= availableToSelect && canAdd) {
       onAddToCart(product, quantity);
       setQuantity(1);
     }
@@ -33,7 +37,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   return (
     <Card
-      hoverable={!isOutOfStock}
+      hoverable={!isOutOfStock && isAvailableByTime}
       className="product-card"
       cover={
         <div className="product-image-container">
@@ -41,8 +45,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             alt={product.name}
             src={product.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=60'}
             className="product-image"
-            style={{ filter: isOutOfStock ? 'grayscale(80%)' : 'none' }}
+            style={{
+              filter: isOutOfStock || !isAvailableByTime ? 'grayscale(70%) opacity(0.85)' : 'none',
+            }}
           />
+
+          {/* Tag de Destacado */}
+          {product.is_featured && (
+            <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 2 }}>
+              <Tag color="gold" style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <StarFilled /> Destacado
+              </Tag>
+            </div>
+          )}
+
+          {/* Tag de Stock */}
           <div className="stock-tag-float">
             {isOutOfStock ? (
               <Tag color="error" style={{ fontWeight: 700 }}>
@@ -79,12 +96,29 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <Text type="secondary" style={{ fontSize: 13, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
           {product.description || 'Producto fresco y de alta calidad.'}
         </Text>
+
+        {/* Indicador de Horario */}
+        {availability.scheduleText && (
+          <div style={{ marginTop: 8 }}>
+            <Tag
+              color={isAvailableByTime ? 'cyan' : 'default'}
+              icon={<ClockCircleOutlined />}
+              style={{ fontSize: 11, borderRadius: 4 }}
+            >
+              {availability.scheduleText}
+            </Tag>
+          </div>
+        )}
       </div>
 
       <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
         {isOutOfStock ? (
           <Button disabled block style={{ borderRadius: 8 }}>
             Sin Stock Disponible
+          </Button>
+        ) : !isAvailableByTime ? (
+          <Button disabled block style={{ borderRadius: 8, fontSize: 13 }}>
+            Fuera de Horario
           </Button>
         ) : (
           <Space direction="horizontal" style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -114,4 +148,3 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     </Card>
   );
 };
-

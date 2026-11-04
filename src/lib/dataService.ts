@@ -1,11 +1,12 @@
 import { createClientBrowser, isSupabaseConfigured } from './supabase/client';
-import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole } from './types';
-import { INITIAL_PRODUCTS } from './mockData';
+import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole, StoreSettings } from './types';
+import { INITIAL_PRODUCTS, DEFAULT_STORE_SETTINGS } from './mockData';
 
 const MOCK_PRODUCTS_KEY = 'tiendita_products';
 const MOCK_ORDERS_KEY = 'tiendita_orders';
 const MOCK_ORDER_SEQ_KEY = 'tiendita_order_seq';
 const MOCK_STAFF_KEY = 'tiendita_staff_users';
+const MOCK_SETTINGS_KEY = 'tiendita_store_settings';
 
 const INITIAL_STAFF_USERS: StaffUser[] = [
   {
@@ -95,6 +96,27 @@ const saveLocalStaff = (staff: StaffUser[]) => {
   }
 };
 
+const getLocalSettings = (): StoreSettings => {
+  if (typeof window === 'undefined') return DEFAULT_STORE_SETTINGS;
+  const stored = localStorage.getItem(MOCK_SETTINGS_KEY);
+  if (!stored) {
+    localStorage.setItem(MOCK_SETTINGS_KEY, JSON.stringify(DEFAULT_STORE_SETTINGS));
+    return DEFAULT_STORE_SETTINGS;
+  }
+  try {
+    return { ...DEFAULT_STORE_SETTINGS, ...JSON.parse(stored) };
+  } catch {
+    return DEFAULT_STORE_SETTINGS;
+  }
+};
+
+const saveLocalSettings = (settings: StoreSettings) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(MOCK_SETTINGS_KEY, JSON.stringify(settings));
+    window.dispatchEvent(new Event('tiendita_storage_updated'));
+  }
+};
+
 const getNextOrderNumber = (): string => {
   if (typeof window === 'undefined') return 'PED-1001';
   let seq = parseInt(localStorage.getItem(MOCK_ORDER_SEQ_KEY) || '1000', 10);
@@ -104,27 +126,63 @@ const getNextOrderNumber = (): string => {
 };
 
 export const dataService = {
-  // Verificar si estamos usando Supabase real o Mock
   isUsingSupabase(): boolean {
     return isSupabaseConfigured();
   },
 
-  // Obtener listado de productos
-  async getProducts(): Promise<Product[]> {
+  // Obtener configuración del portal
+  async getStoreSettings(): Promise<StoreSettings> {
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
       const { data, error } = await supabase
-        .from('products')
+        .from('store_settings')
         .select('*')
-        .eq('is_active', true)
-        .order('name');
+        .eq('id', 'current')
+        .single();
+      if (!error && data) {
+        return data as StoreSettings;
+      }
+    }
+    return getLocalSettings();
+  },
+
+  // Actualizar configuración del portal
+  async updateStoreSettings(updates: Partial<StoreSettings>): Promise<StoreSettings> {
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      const { data, error } = await supabase
+        .from('store_settings')
+        .upsert({ id: 'current', ...updates, updated_at: new Date().toISOString() })
+        .select()
+        .single();
+      if (!error && data) {
+        return data as StoreSettings;
+      }
+    }
+    const current = getLocalSettings();
+    const updated = { ...current, ...updates, updated_at: new Date().toISOString() };
+    saveLocalSettings(updated);
+    return updated;
+  },
+
+  // Obtener listado de productos
+  async getProducts(includeInactive: boolean = false): Promise<Product[]> {
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      let query = supabase.from('products').select('*').order('name');
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      const { data, error } = await query;
       if (error) {
         console.error('Error cargando productos de Supabase, usando local:', error);
-        return getLocalProducts();
+        const local = getLocalProducts();
+        return includeInactive ? local : local.filter((p) => p.is_active);
       }
       return data || [];
     }
-    return getLocalProducts();
+    const local = getLocalProducts();
+    return includeInactive ? local : local.filter((p) => p.is_active);
   },
 
   // Obtener un pedido específico con sus items
@@ -217,9 +275,10 @@ export const dataService = {
       return data;
     }
 
-    // LÓGICA LOCAL MOCK:
+    // LÓGICA LOCAL
     const products = getLocalProducts();
     const orders = getLocalOrders();
+    const settings = getLocalSettings();
 
     // 1. Validar disponibilidad de stock
     for (const item of items) {
@@ -243,11 +302,12 @@ export const dataService = {
     }
     saveLocalProducts(products);
 
-    // 3. Crear pedido con expiración de 10 minutos exactos
+    // 3. Crear pedido con expiración configurable (default 10 min)
+    const pickupMinutes = settings.pickup_time_minutes || 10;
     const orderId = 'ord-' + Math.random().toString(36).substring(2, 9);
     const orderNumber = getNextOrderNumber();
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + pickupMinutes * 60 * 1000).toISOString();
 
     const totalAmount = items.reduce(
       (sum, item) => sum + item.product.price * item.quantity,
@@ -365,7 +425,7 @@ export const dataService = {
     const expiresAt = new Date(order.expires_at).getTime();
     if (now > expiresAt) {
       await this.expireOrders();
-      throw new Error('El tiempo límite de 10 minutos para retirar este pedido ya expiró.');
+      throw new Error('El tiempo límite para retirar este pedido ya expiró.');
     }
 
     orders[orderIndex].status = 'dispatched';
@@ -401,7 +461,7 @@ export const dataService = {
         const expiresTime = new Date(order.expires_at).getTime();
         if (now > expiresTime) {
           order.status = 'expired';
-          order.cancellation_reason = 'Tiempo límite de recogida de 10 minutos expirado.';
+          order.cancellation_reason = 'Tiempo límite de recogida expirado.';
           expiredCount++;
 
           if (order.order_items) {
@@ -425,7 +485,31 @@ export const dataService = {
     return expiredCount;
   },
 
-  // Actualizar stock de un producto (para el panel de inventario)
+  // Actualizar campos de un producto
+  async updateProduct(productId: string, updates: Partial<Product>): Promise<Product | null> {
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      const { data, error } = await supabase
+        .from('products')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', productId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data as Product;
+    }
+
+    const products = getLocalProducts();
+    const index = products.findIndex((p) => p.id === productId);
+    if (index !== -1) {
+      products[index] = { ...products[index], ...updates };
+      saveLocalProducts(products);
+      return products[index];
+    }
+    return null;
+  },
+
+  // Actualizar stock de un producto
   async updateProductStock(productId: string, newStock: number): Promise<boolean> {
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
@@ -447,7 +531,7 @@ export const dataService = {
     return false;
   },
 
-  // Añadir un nuevo producto (para el panel de inventario)
+  // Añadir un nuevo producto
   async addProduct(product: Omit<Product, 'id'>): Promise<Product> {
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
@@ -526,7 +610,6 @@ export const dataService = {
       return data as StaffUser;
     }
 
-    // Modo local
     const staff = getLocalStaff();
     const existing = staff.find((s) => s.email.toLowerCase() === user.email.toLowerCase());
     if (existing) {
