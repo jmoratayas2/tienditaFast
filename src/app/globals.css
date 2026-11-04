@@ -247,3 +247,70 @@ a {
   animation: fadeIn 0.3s ease-out;
 }
 
+
+/* ==========================================================================
+   Responsive Navbar & Hamburger Menu (Mobile-first polish - Zero Tailwind)
+   ========================================================================== */
+.nav-desktop {
+  display: flex !important;
+  align-items: center;
+}
+
+.nav-mobile {
+  display: none !important;
+}
+
+@media (max-width: 820px) {
+  .nav-desktop {
+    display: none !important;
+  }
+
+  .nav-mobile {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-badge {
+    display: none;
+  }
+
+  .page-title {
+    font-size: 1.4rem;
+  }
+}
+
+.mobile-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  transition: all 0.2s ease;
+  width: 100%;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.mobile-nav-item:hover,
+.mobile-nav-item:active {
+  background-color: #f1f5f9;
+  color: #0d9488;
+}
+
+.mobile-nav-item.active {
+  background-color: #f0fdfa;
+  color: #0d9488;
+  border-color: #ccfbf1;
+}
+
+.mobile-user-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
