@@ -352,3 +352,38 @@ a {
   padding: 14px 16px;
   margin-bottom: 8px;
 }
+
+/* ==========================================================================
+   Estilos de Impresión (Corte de Caja / Arqueo Térmico)
+   ========================================================================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #print-corte-area,
+  #print-corte-area * {
+    visibility: visible;
+  }
+
+  #print-corte-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 16px;
+    background: #ffffff;
+    color: #000000;
+    font-family: monospace, sans-serif;
+    display: block !important;
+  }
+
+  .site-navbar,
+  .ant-drawer,
+  .ant-modal-root,
+  .no-print {
+    display: none !important;
+  }
+}

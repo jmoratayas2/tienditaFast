@@ -508,6 +508,12 @@ export default function AdminDashboardPage() {
               + Tomar Pedido Mostrador
             </Button>
 
+            <Link href="/admin/balance">
+              <Button icon={<DollarOutlined />}>
+                Balance de Ventas
+              </Button>
+            </Link>
+
             <Button icon={<ReloadOutlined />} onClick={fetchOrdersAndProducts} loading={loading}>
               Refrescar
             </Button>

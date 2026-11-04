@@ -21,6 +21,7 @@ import {
   LogoutOutlined,
   MenuOutlined,
   CloseOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import { isSupabaseConfigured, createClientBrowser } from '@/lib/supabase/client';
 import { dataService } from '@/lib/dataService';
@@ -323,6 +324,13 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount = 0, onOpenCart }) => 
                 <div className={`drawer-nav-item ${pathname === '/admin' ? 'active' : ''}`}>
                   <DashboardOutlined style={{ fontSize: 18, color: '#0d9488' }} />
                   <span>Pedidos Activos</span>
+                </div>
+              </Link>
+
+              <Link href="/admin/balance" onClick={() => setDrawerOpen(false)}>
+                <div className={`drawer-nav-item ${pathname === '/admin/balance' ? 'active' : ''}`}>
+                  <DollarOutlined style={{ fontSize: 18, color: '#0d9488' }} />
+                  <span>Balance de Ventas</span>
                 </div>
               </Link>
 
