@@ -169,6 +169,7 @@ export default function AdminInventoryPage() {
       image_url: product.image_url,
       is_active: product.is_active,
       is_featured: product.is_featured || false,
+      is_prepared: product.is_prepared || false,
       available_all_day: product.available_all_day !== false,
       available_from: product.available_from || '07:00',
       available_to: product.available_to || '12:00',
@@ -189,6 +190,7 @@ export default function AdminInventoryPage() {
         image_url: values.image_url || null,
         is_active: values.is_active,
         is_featured: values.is_featured,
+        is_prepared: values.is_prepared ?? false,
         available_all_day: values.available_all_day,
         available_from: values.available_all_day ? null : values.available_from,
         available_to: values.available_all_day ? null : values.available_to,
@@ -221,6 +223,7 @@ export default function AdminInventoryPage() {
         image_url: values.image_url || null,
         is_active: values.is_active ?? true,
         is_featured: values.is_featured ?? false,
+        is_prepared: values.is_prepared ?? false,
         available_all_day: values.available_all_day ?? true,
         available_from: values.available_all_day ? null : values.available_from,
         available_to: values.available_all_day ? null : values.available_to,
@@ -269,11 +272,16 @@ export default function AdminInventoryPage() {
       key: 'name',
       render: (name: string, record: Product) => (
         <div>
-          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span>{name}</span>
             {record.is_featured && (
               <Tag color="gold" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
                 ⭐ Destacado
+              </Tag>
+            )}
+            {record.is_prepared && (
+              <Tag color="orange" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>
+                🍳 Preparado
               </Tag>
             )}
           </div>
@@ -527,14 +535,19 @@ export default function AdminInventoryPage() {
           </Divider>
 
           <Row gutter={16} style={{ marginBottom: 12 }}>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Visible en el Catálogo:" name="is_active" valuePropName="checked">
                 <Switch checkedChildren="Visible" unCheckedChildren="Oculto" />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Destacar en Portada:" name="is_featured" valuePropName="checked">
                 <Switch checkedChildren="Destacado" unCheckedChildren="Estándar" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item label="¿Comida para preparar?:" name="is_prepared" valuePropName="checked">
+                <Switch checkedChildren="🍳 Preparado" unCheckedChildren="Listo" />
               </Form.Item>
             </Col>
           </Row>
@@ -668,14 +681,19 @@ export default function AdminInventoryPage() {
           </Divider>
 
           <Row gutter={16} style={{ marginBottom: 12 }}>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Visible para Clientes:" name="is_active" valuePropName="checked">
                 <Switch checkedChildren="Visible" unCheckedChildren="Oculto" />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12}>
+            <Col xs={24} sm={8}>
               <Form.Item label="Marcar como Destacado:" name="is_featured" valuePropName="checked">
                 <Switch checkedChildren="Destacado" unCheckedChildren="Estándar" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item label="¿Comida para preparar?:" name="is_prepared" valuePropName="checked">
+                <Switch checkedChildren="🍳 Preparado" unCheckedChildren="Listo" />
               </Form.Item>
             </Col>
           </Row>

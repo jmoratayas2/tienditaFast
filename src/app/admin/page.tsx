@@ -23,6 +23,7 @@ import {
   Tooltip,
   Select,
   Divider,
+  Segmented,
   message,
 } from 'antd';
 import {
@@ -33,6 +34,7 @@ import {
   DollarOutlined,
   ReloadOutlined,
   EyeOutlined,
+  FireOutlined,
   UserOutlined,
   TeamOutlined,
   PlusCircleOutlined,
@@ -56,6 +58,7 @@ export default function AdminDashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('pending');
+  const [pendingFilter, setPendingFilter] = useState<'all' | 'immediate' | 'scheduled' | 'on_arrival'>('all');
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<Order | null>(null);
   const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -296,6 +299,28 @@ export default function AdminDashboardPage() {
   const dispatchedOrders = orders.filter((o) => o.status === 'dispatched');
   const inactiveOrders = orders.filter((o) => o.status === 'cancelled' || o.status === 'expired');
 
+  // Filtro de pedidos pendientes
+  const filteredPendingOrders = pendingOrders.filter((o) => {
+    if (pendingFilter === 'immediate') return o.pickup_type !== 'scheduled';
+    if (pendingFilter === 'scheduled') return o.pickup_type === 'scheduled';
+    if (pendingFilter === 'on_arrival') return o.preparation_mode === 'on_arrival';
+    return true;
+  });
+
+  const handleUpdateKitchen = async (orderId: string, status: any) => {
+    try {
+      await dataService.updateKitchenStatus(orderId, status);
+      message.success(
+        status === 'cooking'
+          ? 'Cocina iniciada para el pedido.'
+          : 'Comida marcada como lista para entregar.'
+      );
+      fetchOrdersAndProducts();
+    } catch {
+      message.error('No se pudo actualizar el estado de cocina.');
+    }
+  };
+
   // Estadísticas
   const totalRevenue = dispatchedOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
   const isAdmin = userRole === 'admin';
@@ -316,6 +341,15 @@ export default function AdminDashboardPage() {
           <span style={{ fontSize: 11, color: '#94a3b8' }}>
             {formatDateTime(record.created_at)}
           </span>
+          {record.pickup_type === 'scheduled' ? (
+            <Tag color="purple" style={{ margin: 0, fontSize: 11, fontWeight: 700 }}>
+              🕒 Cita: {record.scheduled_pickup_time}
+            </Tag>
+          ) : (
+            <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>
+              ⚡ Inmediato
+            </Tag>
+          )}
         </Space>
       ),
     },
@@ -338,13 +372,75 @@ export default function AdminDashboardPage() {
       ),
     },
     {
+      title: 'Cocina & Preparación',
+      key: 'prep_status',
+      render: (_: any, record: Order) => {
+        if (record.preparation_mode === 'on_arrival') {
+          if (record.kitchen_status === 'cooking') {
+            return (
+              <Space direction="vertical" size={4}>
+                <Tag color="processing" style={{ fontWeight: 700, margin: 0 }}>
+                  🔥 Cocinando en mostrador
+                </Tag>
+                <Button
+                  size="small"
+                  type="primary"
+                  style={{ background: '#10b981', fontSize: 11 }}
+                  onClick={() => handleUpdateKitchen(record.id, 'ready')}
+                >
+                  ✅ Comida Lista
+                </Button>
+              </Space>
+            );
+          }
+          if (record.kitchen_status === 'ready') {
+            return (
+              <Tag color="success" style={{ fontWeight: 700 }}>
+                📦 Comida Lista
+              </Tag>
+            );
+          }
+          return (
+            <Space direction="vertical" size={4}>
+              <Tag color="warning" style={{ fontWeight: 700, margin: 0 }}>
+                🍳 Esperar al cliente
+              </Tag>
+              <div style={{ fontSize: 11, color: '#92400e' }}>
+                No cocinar hasta que llegue a caja
+              </div>
+              <Button
+                size="small"
+                type="primary"
+                style={{ background: '#d97706', fontSize: 11 }}
+                onClick={() => handleUpdateKitchen(record.id, 'cooking')}
+              >
+                👨‍🍳 Llegó cliente / Cocinar
+              </Button>
+            </Space>
+          );
+        }
+        return (
+          <Space direction="vertical" size={2}>
+            <Tag color="default" style={{ margin: 0, color: '#475569' }}>
+              ⚡ Preparar ahora
+            </Tag>
+            {record.has_prepared_items && (
+              <span style={{ fontSize: 11, color: '#0d9488' }}>
+                Con antelación
+              </span>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
       title: 'Productos Solicitados',
       key: 'items',
       render: (_: any, record: Order) => (
         <div style={{ fontSize: 13 }}>
           {record.order_items?.map((item) => (
-            <div key={item.id}>
-              <strong>{item.quantity}x</strong> {item.product_name}
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <strong>{item.quantity}x</strong> <span>{item.product_name}</span>
             </div>
           ))}
         </div>
@@ -366,12 +462,20 @@ export default function AdminDashboardPage() {
       render: (_: any, record: Order) => {
         const remaining = calculateRemainingSeconds(record.expires_at);
         const isUrgent = remaining < 180;
+        const isScheduled = record.pickup_type === 'scheduled';
         return (
-          <Space>
-            <ClockCircleOutlined style={{ color: isUrgent ? '#ef4444' : '#10b981' }} />
-            <Tag color={isUrgent ? 'error' : 'success'} style={{ fontSize: 13, fontWeight: 700 }}>
-              {remaining > 0 ? formatCountdown(remaining) : 'Venciendo...'}
-            </Tag>
+          <Space direction="vertical" size={2}>
+            <Space>
+              <ClockCircleOutlined style={{ color: isUrgent ? '#ef4444' : '#10b981' }} />
+              <Tag color={isUrgent ? 'error' : isScheduled ? 'purple' : 'success'} style={{ fontSize: 12, fontWeight: 700 }}>
+                {remaining > 0 ? formatCountdown(remaining) : 'Venciendo...'}
+              </Tag>
+            </Space>
+            {isScheduled && (
+              <span style={{ fontSize: 11, color: '#7c3aed' }}>
+                Hora acordada: {record.scheduled_pickup_time}
+              </span>
+            )}
           </Space>
         );
       },
@@ -609,16 +713,31 @@ export default function AdminDashboardPage() {
                   </Badge>
                 ),
                 children: (
-                  <Table
-                    columns={pendingColumns}
-                    dataSource={pendingOrders}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{ pageSize: 8 }}
-                    locale={{
-                      emptyText: 'No hay pedidos pendientes en este momento.',
-                    }}
-                  />
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                      <Segmented
+                        value={pendingFilter}
+                        onChange={(val) => setPendingFilter(val as any)}
+                        options={[
+                          { value: 'all', label: `Todos (${pendingOrders.length})` },
+                          { value: 'immediate', label: `⚡ Inmediatos (~10m) (${pendingOrders.filter(o => o.pickup_type !== 'scheduled').length})` },
+                          { value: 'scheduled', label: `🕒 Programados (${pendingOrders.filter(o => o.pickup_type === 'scheduled').length})` },
+                          { value: 'on_arrival', label: `🍳 Al Llegar (${pendingOrders.filter(o => o.preparation_mode === 'on_arrival').length})` },
+                        ]}
+                      />
+                    </div>
+
+                    <Table
+                      columns={pendingColumns}
+                      dataSource={filteredPendingOrders}
+                      rowKey="id"
+                      loading={loading}
+                      pagination={{ pageSize: 8 }}
+                      locale={{
+                        emptyText: 'No hay pedidos pendientes con este filtro.',
+                      }}
+                    />
+                  </div>
                 ),
               },
               {

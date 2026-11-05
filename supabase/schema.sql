@@ -27,6 +27,7 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_all_day BOOLEAN D
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_from TEXT DEFAULT '00:00';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS available_to TEXT DEFAULT '23:59';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS barcode TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_prepared BOOLEAN DEFAULT false;
 
 -- 2. Secuencia para número de pedido legible (ej: PED-1001)
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START WITH 1001;
@@ -47,8 +48,19 @@ CREATE TABLE IF NOT EXISTS public.orders (
     dispatched_by_name TEXT,
     cancellation_reason TEXT,
     payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'refunded')),
-    payment_details JSONB DEFAULT '[]'::jsonb
+    payment_details JSONB DEFAULT '[]'::jsonb,
+    pickup_type TEXT DEFAULT 'immediate',
+    scheduled_pickup_time TEXT,
+    has_prepared_items BOOLEAN DEFAULT false,
+    preparation_mode TEXT DEFAULT 'immediate',
+    kitchen_status TEXT DEFAULT 'ready'
 );
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS pickup_type TEXT DEFAULT 'immediate';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS scheduled_pickup_time TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS has_prepared_items BOOLEAN DEFAULT false;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS preparation_mode TEXT DEFAULT 'immediate';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS kitchen_status TEXT DEFAULT 'ready';
 
 -- 4. Tabla de Items del Pedido
 CREATE TABLE IF NOT EXISTS public.order_items (

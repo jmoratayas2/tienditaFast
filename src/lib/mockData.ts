@@ -26,6 +26,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     barcode: '7401001',
     is_active: true,
     is_featured: true,
+    is_prepared: true,
     available_all_day: true,
     available_from: '06:00',
     available_to: '22:00',
@@ -41,6 +42,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     barcode: '7401002',
     is_active: true,
     is_featured: true,
+    is_prepared: true,
     available_all_day: false,
     available_from: '06:00',
     available_to: '12:00',
@@ -55,6 +57,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1628102491629-778571d893a3?w=500&auto=format&fit=crop&q=80',
     barcode: '7401003',
     is_active: true,
+    is_prepared: true,
     available_all_day: true,
   },
   {
@@ -67,6 +70,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
     barcode: '7401004',
     is_active: true,
+    is_prepared: false,
     available_all_day: true,
   },
   {
@@ -80,6 +84,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     barcode: '7401005',
     is_active: true,
     is_featured: true,
+    is_prepared: true,
     available_all_day: false,
     available_from: '11:00',
     available_to: '16:00',
@@ -94,6 +99,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80',
     barcode: '7401006',
     is_active: true,
+    is_prepared: true,
     available_all_day: true,
   },
   {
@@ -107,6 +113,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     barcode: '7401007',
     is_active: true,
     is_featured: true,
+    is_prepared: false,
     available_all_day: true,
   },
   {
@@ -119,6 +126,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1559839914-ba2ac5cd0c8e?w=500&auto=format&fit=crop&q=80',
     barcode: '7401008',
     is_active: true,
+    is_prepared: false,
     available_all_day: true,
   },
   {
@@ -131,6 +139,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=80',
     barcode: '7401009',
     is_active: true,
+    is_prepared: true,
     available_all_day: false,
     available_from: '07:00',
     available_to: '12:00',
@@ -145,6 +154,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     image_url: 'https://images.unsplash.com/photo-1499636136210-6f4ee915583e?w=500&auto=format&fit=crop&q=80',
     barcode: '7401010',
     is_active: true,
+    is_prepared: false,
     available_all_day: true,
   },
 ];

@@ -175,10 +175,14 @@ export default function OrderTrackingPage({
           </Space>
         </div>
 
-        {/* Temporizador de 10 minutos (Persistente) */}
+        {/* Temporizador / Estado de Cita */}
         <OrderCountdown
           expiresAt={order.expires_at}
           status={order.status}
+          pickupType={order.pickup_type}
+          scheduledPickupTime={order.scheduled_pickup_time}
+          preparationMode={order.preparation_mode}
+          orderNumber={order.order_number}
           onExpire={fetchOrder}
         />
 
@@ -190,19 +194,31 @@ export default function OrderTrackingPage({
             items={[
               {
                 title: 'Pedido Solicitado',
-                description: 'Stock descontado de tienda',
+                description: 'Stock reservado en tienda',
               },
               {
-                title: 'En Preparación / Espera',
-                description: 'Por retirar en mostrador',
+                title:
+                  order.preparation_mode === 'on_arrival'
+                    ? 'Preparar al Llegar a Caja'
+                    : 'En Preparación / Espera',
+                description:
+                  order.preparation_mode === 'on_arrival'
+                    ? 'Di tu código al cajero al llegar'
+                    : order.pickup_type === 'scheduled'
+                    ? `Cita hoy a las ${order.scheduled_pickup_time}`
+                    : 'Por retirar en mostrador',
               },
               {
-                title: order.status === 'cancelled' || order.status === 'expired' ? 'Anulado / Vencido' : 'Despachado & Pagado',
-                description: order.status === 'dispatched'
-                  ? `Despachado por ${order.dispatched_by_name || 'Personal'}`
-                  : order.status === 'expired'
-                  ? 'Expiró el plazo de 10 min'
-                  : 'Listo para entregar',
+                title:
+                  order.status === 'cancelled' || order.status === 'expired'
+                    ? 'Anulado / Vencido'
+                    : 'Despachado & Pagado',
+                description:
+                  order.status === 'dispatched'
+                    ? `Despachado por ${order.dispatched_by_name || 'Personal'}`
+                    : order.status === 'expired'
+                    ? 'Expiró el plazo de retiro'
+                    : 'Listo para entregar',
               },
             ]}
           />

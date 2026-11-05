@@ -136,6 +136,16 @@ VALUES
     )
 ON CONFLICT DO NOTHING;
 
+-- Marcar productos que se preparan al momento (cafetería, horneados, comidas calientes)
+UPDATE public.products 
+SET is_prepared = true 
+WHERE category IN ('Cafetería', 'Panadería', 'Comidas') 
+   OR name ILIKE '%café%' 
+   OR name ILIKE '%croissant%' 
+   OR name ILIKE '%empanada%' 
+   OR name ILIKE '%sandwich%' 
+   OR name ILIKE '%batido%';
+
 -- ==============================================================================
 -- USUARIOS DE PERSONAL INICIALES (CONTROL INTERNO)
 -- ==============================================================================

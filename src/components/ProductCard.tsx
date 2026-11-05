@@ -50,14 +50,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             }}
           />
 
-          {/* Tag de Destacado */}
-          {product.is_featured && (
-            <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 2 }}>
-              <Tag color="gold" style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* Tags Superiores */}
+          <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 2, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {product.is_featured && (
+              <Tag color="gold" style={{ fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
                 <StarFilled /> Destacado
               </Tag>
-            </div>
-          )}
+            )}
+            {product.is_prepared && (
+              <Tag color="orange" style={{ fontWeight: 700, margin: 0 }}>
+                🍳 Al momento
+              </Tag>
+            )}
+          </div>
 
           {/* Tag de Stock */}
           <div className="stock-tag-float">

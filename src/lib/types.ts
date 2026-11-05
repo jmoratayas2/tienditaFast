@@ -4,6 +4,10 @@ export type PaymentMethodType = 'efectivo' | 'tarjeta' | 'transferencia' | 'sinp
 
 export type UserRole = 'admin' | 'despachador';
 
+export type PickupType = 'immediate' | 'scheduled';
+export type PreparationMode = 'on_arrival' | 'immediate';
+export type KitchenStatus = 'pending_arrival' | 'cooking' | 'ready';
+
 export interface StaffUser {
   id: string;
   auth_user_id?: string | null;
@@ -40,6 +44,7 @@ export interface Product {
   available_all_day?: boolean;
   available_from?: string; // Formato HH:mm, ej: "06:00"
   available_to?: string;   // Formato HH:mm, ej: "11:30"
+  is_prepared?: boolean;   // True si es comida que se prepara al momento
   created_at?: string;
   updated_at?: string;
 }
@@ -88,6 +93,11 @@ export interface Order {
   payment_details: PaymentItem[];
   order_items?: OrderItem[];
   shift_cut_id?: string | null;
+  pickup_type?: PickupType;                  // 'immediate' | 'scheduled'
+  scheduled_pickup_time?: string | null;      // ej. '13:30'
+  has_prepared_items?: boolean;              // True si incluye comida preparada
+  preparation_mode?: PreparationMode;        // 'on_arrival' | 'immediate'
+  kitchen_status?: KitchenStatus;            // 'pending_arrival' | 'cooking' | 'ready'
 }
 
 export interface ShiftCut {

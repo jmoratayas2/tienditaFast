@@ -1,5 +1,17 @@
 import { createClientBrowser, isSupabaseConfigured } from './supabase/client';
-import { Product, Order, OrderItem, PaymentItem, StaffUser, UserRole, StoreSettings, ShiftCut } from './types';
+import {
+  Product,
+  Order,
+  OrderItem,
+  PaymentItem,
+  StaffUser,
+  UserRole,
+  StoreSettings,
+  ShiftCut,
+  PickupType,
+  PreparationMode,
+  KitchenStatus,
+} from './types';
 import { INITIAL_PRODUCTS, DEFAULT_STORE_SETTINGS } from './mockData';
 
 const MOCK_PRODUCTS_KEY = 'tiendita_products_gtq';
@@ -283,8 +295,42 @@ export const dataService = {
     customerName: string,
     customerPhone: string,
     customerNotes: string,
-    items: { product: Product; quantity: number }[]
+    items: { product: Product; quantity: number }[],
+    options?: {
+      pickupType?: PickupType;
+      scheduledPickupTime?: string | null;
+      preparationMode?: PreparationMode;
+    }
   ): Promise<{ order_id: string; order_number: string; expires_at: string }> {
+    const hasPrepared = items.some((i) => i.product.is_prepared);
+    const pickupType: PickupType = options?.pickupType || 'immediate';
+    const scheduledTime = options?.scheduledPickupTime || null;
+    const preparationMode: PreparationMode =
+      options?.preparationMode || (hasPrepared ? 'on_arrival' : 'immediate');
+    const kitchenStatus: KitchenStatus =
+      preparationMode === 'on_arrival' ? 'pending_arrival' : 'ready';
+
+    const now = new Date();
+    let expiresAt: string;
+
+    if (pickupType === 'scheduled' && scheduledTime) {
+      const [hh, mm] = scheduledTime.split(':').map((v) => parseInt(v, 10));
+      const scheduledDate = new Date();
+      scheduledDate.setHours(hh || 0, mm || 0, 0, 0);
+
+      // Margen de cortesía de 20 min después de la hora acordada
+      const courtesyMarginMs = 20 * 60 * 1000;
+      let targetTime = scheduledDate.getTime() + courtesyMarginMs;
+      if (targetTime <= now.getTime()) {
+        targetTime = now.getTime() + 20 * 60 * 1000;
+      }
+      expiresAt = new Date(targetTime).toISOString();
+    } else {
+      const settings = getLocalSettings();
+      const pickupMinutes = settings.pickup_time_minutes || 10;
+      expiresAt = new Date(now.getTime() + pickupMinutes * 60 * 1000).toISOString();
+    }
+
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
       const payload = items.map((i) => ({
@@ -303,13 +349,34 @@ export const dataService = {
         throw new Error(error.message);
       }
 
-      return data;
+      if (data?.order_id) {
+        try {
+          await supabase
+            .from('orders')
+            .update({
+              pickup_type: pickupType,
+              scheduled_pickup_time: scheduledTime,
+              has_prepared_items: hasPrepared,
+              preparation_mode: preparationMode,
+              kitchen_status: kitchenStatus,
+              expires_at: expiresAt,
+            })
+            .eq('id', data.order_id);
+        } catch (e) {
+          console.warn('Advertencia al sincronizar metadatos de pedido en Supabase:', e);
+        }
+      }
+
+      return {
+        order_id: data.order_id,
+        order_number: data.order_number,
+        expires_at: expiresAt,
+      };
     }
 
     // LÓGICA LOCAL
     const products = getLocalProducts();
     const orders = getLocalOrders();
-    const settings = getLocalSettings();
 
     // 1. Validar disponibilidad de stock
     for (const item of items) {
@@ -333,12 +400,9 @@ export const dataService = {
     }
     saveLocalProducts(products);
 
-    // 3. Crear pedido con expiración configurable (default 10 min)
-    const pickupMinutes = settings.pickup_time_minutes || 10;
+    // 3. Crear pedido con expiración calculada
     const orderId = 'ord-' + Math.random().toString(36).substring(2, 9);
     const orderNumber = getNextOrderNumber();
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + pickupMinutes * 60 * 1000).toISOString();
 
     const totalAmount = items.reduce(
       (sum, item) => sum + item.product.price * item.quantity,
@@ -368,6 +432,11 @@ export const dataService = {
       payment_status: 'unpaid',
       payment_details: [],
       order_items: orderItems,
+      pickup_type: pickupType,
+      scheduled_pickup_time: scheduledTime,
+      has_prepared_items: hasPrepared,
+      preparation_mode: preparationMode,
+      kitchen_status: kitchenStatus,
     };
 
     orders.unshift(newOrder);
@@ -378,6 +447,28 @@ export const dataService = {
       order_number: orderNumber,
       expires_at: expiresAt,
     };
+  },
+
+  // Actualizar estado de preparación en cocina
+  async updateKitchenStatus(
+    orderId: string,
+    status: KitchenStatus
+  ): Promise<boolean> {
+    if (this.isUsingSupabase()) {
+      const supabase = createClientBrowser();
+      await supabase
+        .from('orders')
+        .update({ kitchen_status: status })
+        .eq('id', orderId);
+    }
+
+    const orders = getLocalOrders();
+    const index = orders.findIndex((o) => o.id === orderId);
+    if (index !== -1) {
+      orders[index].kitchen_status = status;
+      saveLocalOrders(orders);
+    }
+    return true;
   },
 
   // Anular/cancelar pedido y restaurar stock
