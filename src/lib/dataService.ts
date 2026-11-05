@@ -222,7 +222,21 @@ export const dataService = {
         const local = getLocalProducts();
         return includeInactive ? local : local.filter((p) => p.is_active);
       }
-      return data || [];
+      // Combinar con almacenamiento local por si faltan columnas en el esquema de Supabase
+      const local = getLocalProducts();
+      const merged = (data || []).map((dbProd: any) => {
+        const localMatch = local.find((lp) => lp.id === dbProd.id);
+        return {
+          barcode: dbProd.barcode !== undefined ? dbProd.barcode : (localMatch?.barcode ?? null),
+          is_featured: dbProd.is_featured !== undefined ? dbProd.is_featured : (localMatch?.is_featured ?? false),
+          is_prepared: dbProd.is_prepared !== undefined ? dbProd.is_prepared : (localMatch?.is_prepared ?? false),
+          available_all_day: dbProd.available_all_day !== undefined ? dbProd.available_all_day : (localMatch?.available_all_day ?? true),
+          available_from: dbProd.available_from !== undefined ? dbProd.available_from : (localMatch?.available_from ?? null),
+          available_to: dbProd.available_to !== undefined ? dbProd.available_to : (localMatch?.available_to ?? null),
+          ...dbProd,
+        } as Product;
+      });
+      return merged;
     }
     const local = getLocalProducts();
     return includeInactive ? local : local.filter((p) => p.is_active);
@@ -351,17 +365,30 @@ export const dataService = {
 
       if (data?.order_id) {
         try {
-          await supabase
-            .from('orders')
-            .update({
-              pickup_type: pickupType,
-              scheduled_pickup_time: scheduledTime,
-              has_prepared_items: hasPrepared,
-              preparation_mode: preparationMode,
-              kitchen_status: kitchenStatus,
-              expires_at: expiresAt,
-            })
-            .eq('id', data.order_id);
+          let orderPayload: any = {
+            pickup_type: pickupType,
+            scheduled_pickup_time: scheduledTime,
+            has_prepared_items: hasPrepared,
+            preparation_mode: preparationMode,
+            kitchen_status: kitchenStatus,
+            expires_at: expiresAt,
+          };
+
+          for (let attempt = 0; attempt < 8; attempt++) {
+            const { error: updErr } = await supabase
+              .from('orders')
+              .update(orderPayload)
+              .eq('id', data.order_id);
+
+            if (!updErr) break;
+
+            const match = updErr.message?.match(/Could not find the '(\w+)' column/i);
+            if (match && match[1] && match[1] in orderPayload) {
+              delete orderPayload[match[1]];
+              continue;
+            }
+            break;
+          }
         } catch (e) {
           console.warn('Advertencia al sincronizar metadatos de pedido en Supabase:', e);
         }
@@ -685,73 +712,143 @@ export const dataService = {
   },
 
     // Actualizar campos de un producto
-    async updateProduct(productId: string, updates: Partial<Product>): Promise < Product | null > {
-      if(this.isUsingSupabase()) {
-  const supabase = createClientBrowser();
-  const { data, error } = await supabase
-    .from('products')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', productId)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return data as Product;
-}
+    async updateProduct(productId: string, updates: Partial<Product>): Promise<Product | null> {
+      if (this.isUsingSupabase()) {
+        const supabase = createClientBrowser();
+        let payload: any = { ...updates, updated_at: new Date().toISOString() };
+        let resultData: any = null;
+        let lastError: any = null;
 
-const products = getLocalProducts();
-const index = products.findIndex((p) => p.id === productId);
-if (index !== -1) {
-  products[index] = { ...products[index], ...updates };
-  saveLocalProducts(products);
-  return products[index];
-}
-return null;
-  },
+        // Auto-healing para esquemas no migrados en Supabase:
+        // Si falta alguna columna en 'products' (ej: is_prepared, barcode), se descarta del payload y se reintenta
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const { data, error } = await supabase
+            .from('products')
+            .update(payload)
+            .eq('id', productId)
+            .select()
+            .single();
 
-  // Actualizar stock de un producto
-  async updateProductStock(productId: string, newStock: number): Promise < boolean > {
-  if(this.isUsingSupabase()) {
-  const supabase = createClientBrowser();
-  const { error } = await supabase
-    .from('products')
-    .update({ stock: newStock, updated_at: new Date().toISOString() })
-    .eq('id', productId);
-  if (error) throw new Error(error.message);
-  return true;
-}
+          if (!error) {
+            resultData = data;
+            lastError = null;
+            break;
+          }
 
-const products = getLocalProducts();
-const index = products.findIndex((p) => p.id === productId);
-if (index !== -1) {
-  products[index].stock = Math.max(0, newStock);
-  saveLocalProducts(products);
-  return true;
-}
-return false;
-  },
+          lastError = error;
+          const match = error.message?.match(/Could not find the '(\w+)' column/i);
+          if (match && match[1] && match[1] in payload) {
+            console.warn(`[Supabase] Columna '${match[1]}' no existe en 'products'. Omitiendo temporalmente para guardar...`);
+            delete payload[match[1]];
+            continue;
+          }
+          break;
+        }
 
-  // Añadir un nuevo producto
-  async addProduct(product: Omit<Product, 'id'>): Promise < Product > {
-  if(this.isUsingSupabase()) {
-  const supabase = createClientBrowser();
-  const { data, error } = await supabase
-    .from('products')
-    .insert(product)
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
-}
+        if (lastError && !resultData) {
+          throw new Error(lastError.message);
+        }
 
-const products = getLocalProducts();
-const newProd: Product = {
-  ...product,
-  id: 'prod-' + Math.random().toString(36).substring(2, 9),
-};
-products.unshift(newProd);
-saveLocalProducts(products);
-return newProd;
-  },
+        // Mantener sincronizado en localStorage para no perder los campos locales si faltan columnas en BD
+        const products = getLocalProducts();
+        const index = products.findIndex((p) => p.id === productId);
+        if (index !== -1) {
+          products[index] = { ...products[index], ...updates, ...(resultData || {}) };
+          saveLocalProducts(products);
+          return products[index];
+        } else if (resultData) {
+          const fullProd = { ...resultData, ...updates } as Product;
+          products.unshift(fullProd);
+          saveLocalProducts(products);
+          return fullProd;
+        }
+
+        return (resultData || { id: productId, ...updates }) as Product;
+      }
+
+      const products = getLocalProducts();
+      const index = products.findIndex((p) => p.id === productId);
+      if (index !== -1) {
+        products[index] = { ...products[index], ...updates };
+        saveLocalProducts(products);
+        return products[index];
+      }
+      return null;
+    },
+
+    // Actualizar stock de un producto
+    async updateProductStock(productId: string, newStock: number): Promise<boolean> {
+      if (this.isUsingSupabase()) {
+        const supabase = createClientBrowser();
+        const { error } = await supabase
+          .from('products')
+          .update({ stock: newStock, updated_at: new Date().toISOString() })
+          .eq('id', productId);
+        if (error) throw new Error(error.message);
+        return true;
+      }
+
+      const products = getLocalProducts();
+      const index = products.findIndex((p) => p.id === productId);
+      if (index !== -1) {
+        products[index] = { ...products[index], stock: Math.max(0, newStock) };
+        saveLocalProducts(products);
+        return true;
+      }
+      return false;
+    },
+
+    // Añadir un nuevo producto
+    async addProduct(product: Omit<Product, 'id'>): Promise<Product> {
+      if (this.isUsingSupabase()) {
+        const supabase = createClientBrowser();
+        let payload: any = { ...product };
+        let resultData: any = null;
+        let lastError: any = null;
+
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const { data, error } = await supabase
+            .from('products')
+            .insert(payload)
+            .select()
+            .single();
+
+          if (!error) {
+            resultData = data;
+            lastError = null;
+            break;
+          }
+
+          lastError = error;
+          const match = error.message?.match(/Could not find the '(\w+)' column/i);
+          if (match && match[1] && match[1] in payload) {
+            console.warn(`[Supabase] Columna '${match[1]}' no existe en 'products' al insertar. Omitiendo...`);
+            delete payload[match[1]];
+            continue;
+          }
+          break;
+        }
+
+        if (lastError && !resultData) {
+          throw new Error(lastError.message);
+        }
+
+        const newProd = { ...product, ...(resultData || {}) } as Product;
+        const products = getLocalProducts();
+        products.unshift(newProd);
+        saveLocalProducts(products);
+        return newProd;
+      }
+
+      const products = getLocalProducts();
+      const newProd: Product = {
+        ...product,
+        id: 'prod-' + Math.random().toString(36).substring(2, 9),
+      };
+      products.unshift(newProd);
+      saveLocalProducts(products);
+      return newProd;
+    },
 
   // ==========================================================================
   // GESTIÓN DE USUARIOS INTERNOS DEL PERSONAL (CONTROL INTERNO)
