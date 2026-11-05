@@ -60,10 +60,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerNotes, setCustomerNotes] = useState('');
 
-  // Opciones de retiro y preparación
+  // Opciones de retiro
   const [pickupType, setPickupType] = useState<PickupType>('immediate');
   const [scheduledPickupTime, setScheduledPickupTime] = useState<string>('');
-  const [preparationMode, setPreparationMode] = useState<PreparationMode>('on_arrival');
 
   // Verificar si hay comida que se prepara al momento
   const hasPreparedItems = useMemo(
@@ -118,7 +117,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         {
           pickupType,
           scheduledPickupTime: pickupType === 'scheduled' ? effectiveScheduledTime : null,
-          preparationMode: hasPreparedItems ? preparationMode : 'immediate',
+          preparationMode: hasPreparedItems ? 'on_arrival' : 'immediate',
         }
       );
 
@@ -257,52 +256,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </Card>
 
           {/* ============================================================= */}
-          {/* SECCIÓN 2: MANEJO DE COMIDA PREPARADA (Cero desperdicios)    */}
+          {/* SECCIÓN 2: POLÍTICA DE COMIDA PREPARADA (Cero desperdicios)   */}
           {/* ============================================================= */}
           {hasPreparedItems && (
             <Card
               size="small"
               style={{
                 borderRadius: 12,
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: '#92400e', fontWeight: 700, fontSize: 13 }}>
-                <FireOutlined style={{ color: '#d97706', fontSize: 16 }} />
-                <span>Tu orden incluye comida que se prepara al momento</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, color: '#166534', fontWeight: 700, fontSize: 13 }}>
+                <CheckCircleOutlined style={{ color: '#16a34a', fontSize: 16 }} />
+                <span>🍳 Preparación fresca al presentarte en mostrador</span>
               </div>
-              <div style={{ fontSize: 12, color: '#78350f', marginBottom: 10 }}>
-                Para evitar que tu comida se enfríe o se desperdicie si te demoras en llegar:
+              <div style={{ fontSize: 12, color: '#15803d', lineHeight: 1.4 }}>
+                Tu pedido incluye comida que se prepara al momento. Para garantizar que la recibas <strong>caliente, recién hecha y evitar cualquier desperdicio de comida</strong>, la cocina comenzará a prepararla en cuanto te presentes a la tienda y menciones tu número de pedido.
               </div>
-
-              <Radio.Group
-                value={preparationMode}
-                onChange={(e) => setPreparationMode(e.target.value)}
-                style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}
-              >
-                <Radio value="on_arrival" style={{ alignItems: 'flex-start' }}>
-                  <div style={{ marginLeft: 4 }}>
-                    <div style={{ fontWeight: 700, color: '#166534', fontSize: 13 }}>
-                      🟢 Preparar cuando llegue al mostrador (Recomendado)
-                    </div>
-                    <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
-                      Se cocinará fresca y caliente en cuanto te presentes a caja y digas tu código de pedido. ¡Comida recién hecha garantizada!
-                    </div>
-                  </div>
-                </Radio>
-
-                <Radio value="immediate" style={{ alignItems: 'flex-start' }}>
-                  <div style={{ marginLeft: 4 }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 13 }}>
-                      ⚡ Preparar con antelación para que esté lista
-                    </div>
-                    <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
-                      La tienda la preparará desde ya para que solo pases a recogerla.
-                    </div>
-                  </div>
-                </Radio>
-              </Radio.Group>
             </Card>
           )}
 

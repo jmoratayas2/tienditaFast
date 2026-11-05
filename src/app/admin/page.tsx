@@ -420,16 +420,9 @@ export default function AdminDashboardPage() {
           );
         }
         return (
-          <Space direction="vertical" size={2}>
-            <Tag color="default" style={{ margin: 0, color: '#475569' }}>
-              ⚡ Preparar ahora
-            </Tag>
-            {record.has_prepared_items && (
-              <span style={{ fontSize: 11, color: '#0d9488' }}>
-                Con antelación
-              </span>
-            )}
-          </Space>
+          <Tag color="default" style={{ margin: 0, color: '#475569' }}>
+            📦 Empacado / Listo
+          </Tag>
         );
       },
     },

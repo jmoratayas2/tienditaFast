@@ -305,8 +305,8 @@ export const dataService = {
     const hasPrepared = items.some((i) => i.product.is_prepared);
     const pickupType: PickupType = options?.pickupType || 'immediate';
     const scheduledTime = options?.scheduledPickupTime || null;
-    const preparationMode: PreparationMode =
-      options?.preparationMode || (hasPrepared ? 'on_arrival' : 'immediate');
+    // Toda comida que requiera preparación se prepara SIEMPRE al llegar el cliente al mostrador (cero desperdicio)
+    const preparationMode: PreparationMode = hasPrepared ? 'on_arrival' : 'immediate';
     const kitchenStatus: KitchenStatus =
       preparationMode === 'on_arrival' ? 'pending_arrival' : 'ready';
 
