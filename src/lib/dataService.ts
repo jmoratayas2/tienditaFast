@@ -626,13 +626,35 @@ export const dataService = {
         }
       }
 
-      const { data, error } = await supabase.rpc('dispatch_order', {
+      let { data, error } = await supabase.rpc('dispatch_order', {
         p_order_id: orderId,
         p_user_id: dispatcher.id || null,
         p_user_name: dispatcher.name,
         p_payments: payments,
         p_notes: notes || null,
       });
+
+      // Auto-healing para restricción de llave foránea (23503 en orders_dispatched_by_id_fkey):
+      // Si el ID del despachador proviene de staff_users y no de auth.users, reintentar con p_user_id = null
+      if (
+        error &&
+        (error.code === '23503' ||
+          error.message?.includes('violates foreign key constraint') ||
+          error.message?.includes('orders_dispatched_by_id_fkey') ||
+          error.message?.includes('dispatched_by_id'))
+      ) {
+        console.warn('ID de usuario no registrado en auth.users, reintentando despacho seguro...');
+        const retryRes = await supabase.rpc('dispatch_order', {
+          p_order_id: orderId,
+          p_user_id: null,
+          p_user_name: dispatcher.name,
+          p_payments: payments,
+          p_notes: notes || null,
+        });
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
       if (error) throw new Error(error.message);
       return data;
     }

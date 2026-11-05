@@ -121,7 +121,8 @@ export default function AdminDashboardPage() {
           setUserRole(profile.role);
           setCurrentUser((prev: any) => ({
             ...prev,
-            id: profile.auth_user_id || profile.id || prev?.id,
+            id: prev?.id || profile.auth_user_id || profile.id,
+            staffId: profile.id,
             name: profile.full_name,
             role: profile.role,
           }));

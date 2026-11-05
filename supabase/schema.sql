@@ -467,6 +467,11 @@ BEGIN
         RAISE EXCEPTION 'El tiempo límite para retirar este pedido ya ha expirado.';
     END IF;
 
+    -- Validar si p_user_id existe en auth.users antes de asignarlo para evitar error 23503
+    IF p_user_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM auth.users WHERE id = p_user_id) THEN
+        p_user_id := NULL;
+    END IF;
+
     UPDATE public.orders
     SET status = 'dispatched',
         dispatched_at = now(),

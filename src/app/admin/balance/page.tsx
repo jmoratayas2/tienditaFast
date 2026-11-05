@@ -156,7 +156,8 @@ export default function AdminBalancePage() {
           setCutTargetUser(match.full_name);
           setCurrentUser((prev: any) => ({
             ...prev,
-            id: match.auth_user_id || match.id || prev?.id,
+            id: prev?.id || match.auth_user_id || match.id,
+            staffId: match.id,
             name: match.full_name,
             role: match.role,
           }));
