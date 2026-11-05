@@ -56,22 +56,16 @@ const INITIAL_STAFF_USERS: StaffUser[] = [
 
 // Helper de LocalStorage para almacenamiento local persistente
 const getLocalProducts = (): Product[] => {
-  if (typeof window === 'undefined') return INITIAL_PRODUCTS;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem(MOCK_PRODUCTS_KEY);
   if (!stored) {
-    localStorage.setItem(MOCK_PRODUCTS_KEY, JSON.stringify(INITIAL_PRODUCTS));
-    return INITIAL_PRODUCTS;
+    return [];
   }
   try {
     const parsed = JSON.parse(stored);
-    // Si contiene precios antiguos en colones (> 300), reiniciar a precios en quetzales
-    if (Array.isArray(parsed) && parsed.some((p: Product) => p.price > 300)) {
-      localStorage.setItem(MOCK_PRODUCTS_KEY, JSON.stringify(INITIAL_PRODUCTS));
-      return INITIAL_PRODUCTS;
-    }
-    return parsed;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return INITIAL_PRODUCTS;
+    return [];
   }
 };
 
