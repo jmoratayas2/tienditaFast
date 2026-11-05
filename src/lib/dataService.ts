@@ -175,6 +175,7 @@ export const dataService = {
 
   // Obtener configuración del portal
   async getStoreSettings(): Promise<StoreSettings> {
+    const local = getLocalSettings();
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
       const { data, error } = await supabase
@@ -183,23 +184,50 @@ export const dataService = {
         .eq('id', 'current')
         .single();
       if (!error && data) {
-        return data as StoreSettings;
+        return {
+          ...local,
+          ...data,
+          pickup_time_minutes: data.pickup_time_minutes ?? data.pickup_minutes_limit ?? local.pickup_time_minutes,
+        } as StoreSettings;
       }
     }
-    return getLocalSettings();
+    return local;
   },
 
   // Actualizar configuración del portal
   async updateStoreSettings(updates: Partial<StoreSettings>): Promise<StoreSettings> {
     if (this.isUsingSupabase()) {
       const supabase = createClientBrowser();
-      const { data, error } = await supabase
-        .from('store_settings')
-        .upsert({ id: 'current', ...updates, updated_at: new Date().toISOString() })
-        .select()
-        .single();
-      if (!error && data) {
-        return data as StoreSettings;
+      let payload: any = {
+        id: 'current',
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const { data, error } = await supabase
+          .from('store_settings')
+          .upsert(payload)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const current = getLocalSettings();
+          const merged = { ...current, ...updates, ...data };
+          saveLocalSettings(merged);
+          return merged;
+        }
+
+        if (error) {
+          const match = error.message?.match(/Could not find the '(\w+)' column/i);
+          if (match && match[1] && match[1] in payload) {
+            console.warn(`[Supabase] Columna '${match[1]}' no existe aún en 'store_settings'. Omitiendo temporalmente...`);
+            delete payload[match[1]];
+            continue;
+          }
+          console.warn('Error al actualizar store_settings en Supabase:', error);
+          break;
+        }
       }
     }
     const current = getLocalSettings();
